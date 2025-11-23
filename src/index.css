@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Impede o zoom de duplo clique em botões e inputs */
+html, body, button, input, textarea, select {
+  touch-action: manipulation;
+}
+
+/* Garante que o app ocupe a altura total */
+html, body {
+  height: 100%;
+  overflow: hidden; /* Evita rolagem dupla */
+  -webkit-overflow-scrolling: touch;
+}
+
+#root {
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-content, .print-content * {
+    visibility: visible;
+  }
+  .print-content {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    margin: 0;
+    padding: 20px;
+    background: white;
+    overflow: visible !important;
+    z-index: 9999;
+  }
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Reset modal positioning for print */
+  .fixed {
+    position: static !important;
+    overflow: visible !important;
+  }
+  
+  /* Hide scrollbars */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+}

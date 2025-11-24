@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Calendar, DollarSign, Users, Scissors, Package, Briefcase, FileText, Settings, LogOut, Menu, Search, HelpCircle } from 'lucide-react';
+import { BarChart3, Calendar, DollarSign, Users, Scissors, Package, Briefcase, FileText, Settings, LogOut, Menu, Search, HelpCircle, CreditCard } from 'lucide-react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, addDoc, query, onSnapshot, deleteDoc, doc, setDoc, orderBy } from 'firebase/firestore';
 import { auth, db, appId } from './firebase.js';
 
-// Telas e Componentes
 import LoginScreen from './pages/LoginScreen.jsx';
 import DashboardView from './pages/DashboardView.jsx';
 import FinancialView from './pages/FinancialView.jsx';
@@ -19,17 +18,11 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Objeto combinado do usuário (Auth + Profile)
   const currentUser = user ? { ...user, ...userProfile } : null;
 
-  // Verifica bloqueio
-  const isBlocked = userProfile?.dueDays <= -3;
-
   useEffect(() => {
-    // Observa estado de autenticação
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       if (!u) setUserProfile(null);
@@ -38,36 +31,63 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Buscar dados apenas se estiver logado
   useEffect(() => {
     if (!user || !user.uid) return;
 
-    // Listener de Transações
     const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'transactions'), orderBy('date', 'desc'));
     const unsubTrans = onSnapshot(q, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       data.sort((a, b) => new Date(b.date) - new Date(a.date));
       setTransactions(data);
-    }, (error) => {
-      console.error("Erro ao buscar transações:", error);
-    });
+    }, (error) => console.error("Erro transações:", error));
 
-    // Listener de Perfil
+    // Listener de Perfil (COM CÁLCULO EM TEMPO REAL)
     const unsubUser = onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile'), (s) => {
       if (s.exists()) {
-        setUserProfile(s.data());
+        const data = s.data();
+
+        // --- LÓGICA DE CÁLCULO DE DIAS ---
+        let calculatedDueDays = 30; // Padrão
+
+        if (data.paymentDueDate) {
+          // Converte Timestamp do Firestore para Date do JS
+          const dueDate = data.paymentDueDate.toDate();
+          const today = new Date();
+          // Zera as horas para comparar apenas os dias
+          dueDate.setHours(0, 0, 0, 0);
+          today.setHours(0, 0, 0, 0);
+
+          // Calcula a diferença em milissegundos e converte para dias
+          const diffTime = dueDate.getTime() - today.getTime();
+          calculatedDueDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+        // ----------------------------------
+
+        setUserProfile({
+          ...data,
+          isPaid: data.isPaid !== undefined ? data.isPaid : true,
+          dueDays: calculatedDueDays // Usa o valor calculado agora
+        });
+      } else {
+        setUserProfile({ isPaid: true, dueDays: 30 });
       }
     });
 
     return () => { unsubTrans(); unsubUser(); };
   }, [user]);
 
-  // Forçar redirecionamento se bloqueado
+  // 🔥 NOVO: Efeito Mágico de Redirecionamento Automático 🔥
   useEffect(() => {
-    if (isBlocked && currentView !== 'payment') {
-      setCurrentView('payment');
+    // Se o usuário estiver na tela de pagamento E o pagamento for confirmado (isPaid virar true)
+    if (currentView === 'payment' && currentUser?.isPaid === true) {
+      // Aguarda um pequeno delay para o usuário ver o "Sucesso" na tela de pagamento antes de mudar
+      const timer = setTimeout(() => {
+        setCurrentView('dashboard');
+      }, 3000); // 3 segundos de espera
+      return () => clearTimeout(timer);
     }
-  }, [isBlocked, currentView]);
+  }, [currentUser?.isPaid, currentView]);
+
 
   const handleLogout = async () => {
     try { await signOut(auth); } catch (error) { console.error("Erro ao sair:", error); }
@@ -98,31 +118,38 @@ export default function App() {
     { id: 'reports', label: 'Relatórios', icon: FileText },
     { id: 'settings', label: 'Configurações', icon: Settings },
     { id: 'help', label: 'Ajuda', icon: HelpCircle },
+    { id: 'payment', label: 'Assinatura', icon: CreditCard },
   ];
 
   if (loading) return <div className="h-screen flex items-center justify-center text-azuri-600 font-bold">Iniciando...</div>;
   if (!user) return <LoginScreen />;
 
-  // Se bloqueado, renderiza apenas a tela de pagamento (sem sidebar/header)
-  if (isBlocked) {
+  // Lógica de Bloqueio
+  const isBlocked = currentUser?.dueDays !== undefined && currentUser.dueDays < 0;
+  const isDueSoon = currentUser?.dueDays !== undefined && currentUser.dueDays >= 0 && currentUser.dueDays <= 3;
+
+  // Força ida para pagamento se bloqueado
+  if (isBlocked && currentView !== 'payment') {
+    setCurrentView('payment');
+  }
+
+  // Se bloqueado, mostra APENAS a tela de pagamento
+  if (isBlocked && currentView === 'payment') {
     return (
-      <div className="h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-4xl">
-          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-8 rounded shadow-sm">
-            <p className="font-bold">Acesso Bloqueado</p>
-            <p>Seu período de uso expirou há mais de 3 dias. Realize o pagamento para continuar.</p>
-          </div>
-          <PaymentView user={currentUser} />
-          <button onClick={handleLogout} className="mt-8 text-gray-500 hover:text-gray-700 underline text-sm w-full text-center">
-            Sair da conta
-          </button>
-        </div>
-      </div>
+      <PaymentView
+        user={currentUser}
+      />
     );
   }
 
   return (
     <div className="flex h-screen bg-gray-50 font-sans overflow-hidden">
+
+      {/* O Banner some sozinho porque 'isDueSoon' depende de 'dueDays', que é atualizado pelo webhook */}
+      {isDueSoon && (
+        <PaymentBanner days={currentUser.dueDays} onClick={() => setCurrentView('payment')} />
+      )}
+
       <aside className={`fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 lg:translate-x-0 ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-full flex flex-col">
           <div className="h-16 flex items-center px-6 border-b border-gray-100 bg-azuri-600 text-white">
@@ -147,10 +174,6 @@ export default function App() {
           </nav>
 
           <div className="p-4 border-t border-gray-100 space-y-4">
-            <a href="https://www.gsm.dev.br/" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center opacity-50 hover:opacity-100 transition-opacity cursor-pointer">
-              <img src="/gsm.svg" alt="GSM Logo" className="h-6 w-auto mb-1" />
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Desenvolvido por GSM</span>
-            </a>
             <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-500 hover:bg-red-50 rounded-lg transition-colors">
               <LogOut size={18} /> Sair da Conta
             </button>
@@ -160,7 +183,7 @@ export default function App() {
 
       {isMenuOpen && <div className="fixed inset-0 bg-black/20 z-20 lg:hidden" onClick={() => setIsMenuOpen(false)} />}
 
-      <main className="flex-1 flex flex-col h-full w-full lg:pl-64">
+      <main className={`flex-1 flex flex-col h-full w-full lg:pl-64 transition-all ${isDueSoon ? 'pt-0' : ''}`}>
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-10">
           <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="lg:hidden p-2 text-gray-600"><Menu size={24} /></button>
           <h1 className="text-lg font-bold text-gray-700 lg:hidden">{menuItems.find(i => i.id === currentView)?.label}</h1>
@@ -182,8 +205,6 @@ export default function App() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 bg-gray-50 pb-32">
-          <PaymentBanner dueDays={userProfile?.dueDays} onNavigate={setCurrentView} />
-
           <div className="max-w-5xl mx-auto">
             {currentView === 'dashboard' && <DashboardView transactions={transactions} onNavigate={setCurrentView} />}
             {currentView === 'financial' && <FinancialView transactions={transactions} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} searchTerm={searchTerm} />}
@@ -195,7 +216,12 @@ export default function App() {
             {currentView === 'reports' && <ReportsView db={db} user={currentUser} appId={appId} transactions={transactions} />}
             {currentView === 'settings' && <SettingsView user={currentUser} onSaveSettings={handleSaveSettings} />}
             {currentView === 'help' && <HelpView />}
-            {currentView === 'payment' && <PaymentView user={currentUser} />}
+
+            {currentView === 'payment' && (
+              <PaymentView
+                user={currentUser}
+              />
+            )}
           </div>
         </div>
       </main>

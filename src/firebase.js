@@ -1,27 +1,21 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getFunctions } from "firebase/functions";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// ✅ Correção: Usando variáveis de ambiente
 const firebaseConfig = {
-  apiKey: "AIzaSyCcP5qt0G2VQT2JLj6po_rLXpQ2Hp5ZFBY",
-  authDomain: "gestor-25758.firebaseapp.com",
-  projectId: "gestor-25758",
-  storageBucket: "gestor-25758.firebasestorage.app",
-  messagingSenderId: "318964628366",
-  appId: "1:318964628366:web:719222f154d026db2682df",
-  measurementId: "G-G8LYNL0BG4"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const googleProvider = new GoogleAuthProvider();
-// O appId é usado para separar dados em multi-tenancy se necessário, 
-// mas para uso simples o user.uid já basta.
-export const appId = 'gearle-app-production';
-import { getFunctions } from 'firebase/functions';
 export const functions = getFunctions(app);
+export const appId = "gestor-25758"; // ID fixo para referências no banco, se necessário
+export { app };

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { TrendingUp, TrendingDown, Filter, Plus } from 'lucide-react';
 import { serverTimestamp } from 'firebase/firestore';
-import { Button, Card, DataTable, Modal, Input } from '../components/UI.jsx'; // Adicionada extensão .jsx
+import { Button, Card, DataTable, Modal, Input } from '../components/UI.jsx';
 
 const FinancialView = ({ transactions, onAddTransaction, onDeleteTransaction, searchTerm }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -11,9 +11,29 @@ const FinancialView = ({ transactions, onAddTransaction, onDeleteTransaction, se
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    const val = parseFloat(newTrans.amount);
+
+    // ✅ Validações de Segurança de Entrada
+    if (isNaN(val) || val <= 0) {
+      alert("O valor deve ser um número positivo.");
+      return;
+    }
+
+    if (val > 10000000) { // Limite de 10 milhões para evitar erros de formatação/buffer
+      alert("Valor excede o limite permitido.");
+      return;
+    }
+
+    if (!newTrans.description.trim() || newTrans.description.length > 100) {
+      alert("Descrição inválida (máximo 100 caracteres).");
+      return;
+    }
+
     onAddTransaction({
       ...newTrans,
-      amount: parseFloat(newTrans.amount),
+      description: newTrans.description.trim(), // Sanitização básica (trim)
+      amount: val,
       createdAt: serverTimestamp()
     });
     setIsModalOpen(false);

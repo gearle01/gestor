@@ -22,6 +22,10 @@ const LoginScreen = () => {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
 
+  // Rate Limiting States
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [isLocked, setIsLocked] = useState(false);
+
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError('');
@@ -37,6 +41,13 @@ const LoginScreen = () => {
 
   const handleEmailAuth = async (e) => {
     e.preventDefault();
+
+    // ✅ Proteção contra Força Bruta
+    if (isLocked) {
+      setError("Muitas tentativas. Aguarde 1 minuto.");
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -54,9 +65,28 @@ const LoginScreen = () => {
         }
       } else {
         await signInWithEmailAndPassword(auth, formData.email, formData.password);
+        setLoginAttempts(0); // Sucesso reseta tentativas
       }
     } catch (err) {
       console.error(err);
+
+      // Lógica de Bloqueio apenas para Login
+      if (!isRegistering) {
+        const newAttempts = loginAttempts + 1;
+        setLoginAttempts(newAttempts);
+
+        if (newAttempts >= 5) {
+          setIsLocked(true);
+          setError("Muitas tentativas falhas. Bloqueado temporariamente.");
+          setTimeout(() => {
+            setIsLocked(false);
+            setLoginAttempts(0);
+          }, 60000); // 1 minuto de bloqueio
+          setLoading(false);
+          return;
+        }
+      }
+
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         setError('E-mail ou senha incorretos.');
       } else if (err.code === 'auth/email-already-in-use') {

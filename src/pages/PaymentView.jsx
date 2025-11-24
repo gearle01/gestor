@@ -18,6 +18,16 @@ export default function PaymentView({ user }) {
     // Atenção: Lógica de segurança está no backend, este valor é apenas ilustrativo se precisar mostrar
     const PIX_AMOUNT_DISPLAY = "R$ 9,99";
 
+    // ✅ Correção: Validação de segurança imediata
+    if (!user || !user.uid || !user.email) {
+        return (
+            <div className="flex items-center justify-center h-full text-red-600 p-4">
+                <AlertTriangle className="mr-2" />
+                <span className="font-bold">Erro de Segurança: Usuário não autenticado. Faça login novamente.</span>
+            </div>
+        );
+    }
+
     // 🔥 NOVO: Listener Automático de Sucesso 🔥
     // Assim que o 'user' for atualizado pelo App.jsx (via webhook), isso roda:
     useEffect(() => {
@@ -31,6 +41,14 @@ export default function PaymentView({ user }) {
         event.preventDefault();
         setLoading(true);
         setError(null);
+
+        // ✅ Dupla verificação antes de enviar
+        if (!user?.uid) {
+            setError("Sessão inválida. Recarregue a página.");
+            setLoading(false);
+            return;
+        }
+
         if (!stripe || !elements) { setLoading(false); return; }
         const cardElement = elements.getElement(CardElement);
         try {

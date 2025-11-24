@@ -23,3 +23,5 @@ export const googleProvider = new GoogleAuthProvider();
 // O appId é usado para separar dados em multi-tenancy se necessário, 
 // mas para uso simples o user.uid já basta.
 export const appId = 'gearle-app-production';
+import { getFunctions } from 'firebase/functions';
+export const functions = getFunctions(app);

@@ -9,6 +9,8 @@ import LoginScreen from './pages/LoginScreen.jsx';
 import DashboardView from './pages/DashboardView.jsx';
 import FinancialView from './pages/FinancialView.jsx';
 import { ClientsView, ServicesView, ProductsView, ProfessionalsView, ReportsView, AgendaView, SettingsView, HelpView } from './pages/ManagementViews.jsx';
+import PaymentView from './pages/PaymentView.jsx';
+import PaymentBanner from './components/PaymentBanner.jsx';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -22,6 +24,9 @@ export default function App() {
 
   // Objeto combinado do usuário (Auth + Profile)
   const currentUser = user ? { ...user, ...userProfile } : null;
+
+  // Verifica bloqueio
+  const isBlocked = userProfile?.dueDays <= -3;
 
   useEffect(() => {
     // Observa estado de autenticação
@@ -57,6 +62,13 @@ export default function App() {
     return () => { unsubTrans(); unsubUser(); };
   }, [user]);
 
+  // Forçar redirecionamento se bloqueado
+  useEffect(() => {
+    if (isBlocked && currentView !== 'payment') {
+      setCurrentView('payment');
+    }
+  }, [isBlocked, currentView]);
+
   const handleLogout = async () => {
     try { await signOut(auth); } catch (error) { console.error("Erro ao sair:", error); }
   };
@@ -90,6 +102,24 @@ export default function App() {
 
   if (loading) return <div className="h-screen flex items-center justify-center text-azuri-600 font-bold">Iniciando...</div>;
   if (!user) return <LoginScreen />;
+
+  // Se bloqueado, renderiza apenas a tela de pagamento (sem sidebar/header)
+  if (isBlocked) {
+    return (
+      <div className="h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-4xl">
+          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-8 rounded shadow-sm">
+            <p className="font-bold">Acesso Bloqueado</p>
+            <p>Seu período de uso expirou há mais de 3 dias. Realize o pagamento para continuar.</p>
+          </div>
+          <PaymentView user={currentUser} />
+          <button onClick={handleLogout} className="mt-8 text-gray-500 hover:text-gray-700 underline text-sm w-full text-center">
+            Sair da conta
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-50 font-sans overflow-hidden">
@@ -152,6 +182,8 @@ export default function App() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 bg-gray-50 pb-32">
+          <PaymentBanner dueDays={userProfile?.dueDays} onNavigate={setCurrentView} />
+
           <div className="max-w-5xl mx-auto">
             {currentView === 'dashboard' && <DashboardView transactions={transactions} onNavigate={setCurrentView} />}
             {currentView === 'financial' && <FinancialView transactions={transactions} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} searchTerm={searchTerm} />}
@@ -163,6 +195,7 @@ export default function App() {
             {currentView === 'reports' && <ReportsView db={db} user={currentUser} appId={appId} transactions={transactions} />}
             {currentView === 'settings' && <SettingsView user={currentUser} onSaveSettings={handleSaveSettings} />}
             {currentView === 'help' && <HelpView />}
+            {currentView === 'payment' && <PaymentView user={currentUser} />}
           </div>
         </div>
       </main>

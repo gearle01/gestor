@@ -25,9 +25,9 @@ export const Card = ({ children, className = '' }) => (
   </div>
 );
 
-export const Input = ({ label, error, onChange, ...props }) => {
+export const Input = ({ label, error, onChange, rightElement, ...props }) => {
   const handleChange = (e) => {
-    if (e.target.value && e.target.value.length > 0) {
+    if (props.type !== 'password' && e.target.value && e.target.value.length > 0) {
       e.target.value = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1);
     }
     onChange && onChange(e);
@@ -36,13 +36,20 @@ export const Input = ({ label, error, onChange, ...props }) => {
   return (
     <div className="flex flex-col gap-1 mb-3">
       {label && <label className="text-xs font-semibold text-gray-500 uppercase">{label}</label>}
-      <input
-        className={`w-full p-3 rounded-lg border focus:ring-2 outline-none transition-all text-sm disabled:bg-gray-50 disabled:text-gray-500 ${error ? 'border-red-300 focus:border-red-500 focus:ring-red-100' : 'border-gray-200 focus:border-azuri-500 focus:ring-azuri-100'}`}
-        onChange={handleChange}
-        autoCapitalize="sentences"
-        spellCheck={true}
-        {...props}
-      />
+      <div className="relative">
+        <input
+          className={`w-full p-3 rounded-lg border focus:ring-2 outline-none transition-all text-sm disabled:bg-gray-50 disabled:text-gray-500 ${error ? 'border-red-300 focus:border-red-500 focus:ring-red-100' : 'border-gray-200 focus:border-azuri-500 focus:ring-azuri-100'} ${rightElement ? 'pr-10' : ''}`}
+          onChange={handleChange}
+          autoCapitalize={props.type === 'password' ? 'none' : 'sentences'}
+          spellCheck={props.type !== 'password'}
+          {...props}
+        />
+        {rightElement && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+            {rightElement}
+          </div>
+        )}
+      </div>
       {error && <span className="text-xs text-red-500 flex items-center gap-1"><AlertCircle size={10} /> {error}</span>}
     </div>
   );

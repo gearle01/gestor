@@ -10,11 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google-cloud/firestore": "^8.0.0",
     "@react-pdf/renderer": "^4.3.1",
+    "@stripe/react-stripe-js": "^5.4.0",
+    "@stripe/stripe-js": "^8.5.2",
     "firebase": "^12.6.0",
     "lucide-react": "^0.554.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "stripe": "^20.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

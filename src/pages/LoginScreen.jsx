@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Settings, User, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
-import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { auth, googleProvider } from '../firebase'; // Importando do arquivo firebase.js
-import { Input, Button } from '../components/UI';
+import { Settings, User, Mail, Lock, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
+import { auth, googleProvider } from '../firebase';
+import { Input, Button, Modal } from '../components/UI';
 
 const GoogleIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -18,6 +18,9 @@ const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({ email: '', password: '', name: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -68,6 +71,22 @@ const LoginScreen = () => {
     }
   };
 
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!forgotEmail) {
+      alert('Digite seu e-mail.');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, forgotEmail);
+      alert('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
+      setShowForgotModal(false);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao enviar e-mail. Verifique se o endereço está correto.');
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-azuri-600 to-indigo-700 p-4 font-sans">
       <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-500">
@@ -107,14 +126,36 @@ const LoginScreen = () => {
               onChange={e => setFormData({ ...formData, email: e.target.value })}
               icon={Mail}
             />
-            <Input
-              label="Senha"
-              type="password"
-              placeholder="••••••••"
-              value={formData.password}
-              onChange={e => setFormData({ ...formData, password: e.target.value })}
-              icon={Lock}
-            />
+
+            <div>
+              <Input
+                label="Senha"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={formData.password}
+                onChange={e => setFormData({ ...formData, password: e.target.value })}
+                icon={Lock}
+                rightElement={
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="focus:outline-none hover:text-azuri-600 transition-colors">
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                }
+              />
+              {!isRegistering && (
+                <div className="flex justify-end -mt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotEmail(formData.email); // Pre-fill email if available
+                      setShowForgotModal(true);
+                    }}
+                    className="text-xs text-azuri-600 hover:underline font-medium"
+                  >
+                    Esqueci minha senha
+                  </button>
+                </div>
+              )}
+            </div>
 
             <Button
               type="submit"
@@ -155,6 +196,28 @@ const LoginScreen = () => {
           </p>
         </div>
       </div>
+
+      {showForgotModal && (
+        <Modal title="Recuperar Senha" onClose={() => setShowForgotModal(false)}>
+          <form onSubmit={handleForgotPassword} className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Digite seu e-mail abaixo. Enviaremos um link para você redefinir sua senha.
+            </p>
+            <Input
+              label="E-mail"
+              type="email"
+              placeholder="seu@email.com"
+              value={forgotEmail}
+              onChange={e => setForgotEmail(e.target.value)}
+              icon={Mail}
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setShowForgotModal(false)}>Cancelar</Button>
+              <Button type="submit">Enviar E-mail</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 };

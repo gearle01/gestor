@@ -155,7 +155,7 @@ export default function App() {
           <div className="h-16 flex items-center px-6 border-b border-gray-100 bg-azuri-600 text-white">
             <div className="font-bold text-xl flex items-center gap-2">
               <div className="bg-white text-azuri-600 p-1 rounded-md"><Settings size={16} /></div>
-              Gearle
+              Gestor
             </div>
           </div>
           <div className="p-4 bg-azuri-50 border-b border-azuri-100">

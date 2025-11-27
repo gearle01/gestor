@@ -174,9 +174,12 @@ exports.handleStripeWebhook = onRequest({ secrets: [stripeSecret, stripeWebhookS
         }
 
         // Cancelamento ou Falha
+        // ✅ COMO DEVE FICAR:
         if (event.type === 'customer.subscription.deleted' || event.type === 'invoice.payment_failed') {
             await db.doc(getUserProfilePath(uid)).set({
                 isPaid: false,
+                // ADICIONE ESTA LINHA ABAIXO: 👇
+                paymentDueDate: admin.firestore.Timestamp.now(),
                 dueDays: 0
             }, { merge: true });
             console.log(`❌ Assinatura Stripe cancelada/falhou: ${uid}`);

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
-import { CreditCard, QrCode, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { CreditCard, QrCode, CheckCircle, AlertTriangle, Loader2, Tag } from 'lucide-react';
 
 export default function PaymentView({ user }) {
     const stripe = useStripe();
@@ -13,12 +13,13 @@ export default function PaymentView({ user }) {
     const [success, setSuccess] = useState(false);
     const [pixData, setPixData] = useState(null);
 
+    // 🔥 CONFIGURAÇÃO DO CUPOM AUTOMÁTICO 🔥
+    const [coupon, setCoupon] = useState('PRIMEIRA8');
+
     // ⬇️ CONFIGURAÇÕES ⬇️
     const STRIPE_PLAN_ID = 'price_1SX2Kg2UNhTPKWTwta3RPfLI';
-    // Atenção: Lógica de segurança está no backend, este valor é apenas ilustrativo se precisar mostrar
     const PIX_AMOUNT_DISPLAY = "R$ 9,99";
 
-    // ✅ Correção: Validação de segurança imediata
     if (!user || !user.uid || !user.email) {
         return (
             <div className="flex items-center justify-center h-full text-red-600 p-4">
@@ -28,12 +29,10 @@ export default function PaymentView({ user }) {
         );
     }
 
-    // 🔥 NOVO: Listener Automático de Sucesso 🔥
-    // Assim que o 'user' for atualizado pelo App.jsx (via webhook), isso roda:
     useEffect(() => {
-        if (user && user.isPaid === true) {
+        if (user && user.isPaid === true && user.paymentMethod) {
             setSuccess(true);
-            setPixData(null); // Limpa o QR Code para mostrar o sucesso
+            setPixData(null);
         }
     }, [user]);
 
@@ -42,7 +41,6 @@ export default function PaymentView({ user }) {
         setLoading(true);
         setError(null);
 
-        // ✅ Dupla verificação antes de enviar
         if (!user?.uid) {
             setError("Sessão inválida. Recarregue a página.");
             setLoading(false);
@@ -57,12 +55,13 @@ export default function PaymentView({ user }) {
 
             const createSubscription = httpsCallable(functions, 'createStripeSubscription');
             const response = await createSubscription({
-                token: token.id, email: user.email, uid: user.uid, planId: STRIPE_PLAN_ID
+                token: token.id,
+                email: user.email,
+                uid: user.uid,
+                planId: STRIPE_PLAN_ID,
+                couponCode: coupon // 👇 Envia o cupom automático
             });
             if (response.data.success) {
-                // Não precisamos setar success aqui manualmente, 
-                // pois o webhook vai atualizar o user e o useEffect acima vai pegar!
-                // Mas podemos deixar como fallback.
                 setSuccess(true);
             } else {
                 setError(response.data.message || 'Erro ao processar assinatura.');
@@ -78,8 +77,7 @@ export default function PaymentView({ user }) {
 
         try {
             const generatePix = httpsCallable(functions, 'generatePixCharge');
-            // Backend define o preço, enviamos apenas email/uid
-            const response = await generatePix({ email: user.email });
+            const response = await generatePix({ email: user.email, couponCode: coupon });
 
             if (response.data.pixCode) {
                 setPixData(response.data);
@@ -125,16 +123,46 @@ export default function PaymentView({ user }) {
 
             {paymentMethod === 'card' ? (
                 <form onSubmit={handleCardSubmit} className="space-y-6">
+                    {/* 👇 VISUALIZAÇÃO DO CUPOM APLICADO */}
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-200 flex items-start gap-3">
+                        <Tag className="text-green-600 mt-1" size={20} />
+                        <div>
+                            <p className="font-bold text-green-800 text-sm">Cupom de Primeira Compra Ativo!</p>
+                            <p className="text-green-700 text-xs mt-1">
+                                O código <span className="font-mono bg-white px-1 rounded border border-green-300">{coupon}</span> foi aplicado.
+                            </p>
+                            <div className="mt-2 flex items-center gap-2">
+                                <span className="text-gray-400 line-through text-sm">R$ 9,99</span>
+                                <span className="font-bold text-lg text-green-700">R$ 1,99</span>
+                                <span className="text-xs text-green-600 font-medium bg-white px-2 py-0.5 rounded-full border border-green-200">1º Mês</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="p-4 border border-gray-200 rounded-lg bg-gray-50"><CardElement options={{ style: { base: { fontSize: '16px' } } }} /></div>
                     <button type="submit" disabled={!stripe || loading} className="w-full py-3 bg-azuri-600 text-white rounded-lg font-bold hover:bg-azuri-700 transition-colors">
-                        {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Assinar com Cartão'}
+                        {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Assinar Agora (R$ 1,99)'}
                     </button>
+                    <p className="text-xs text-center text-gray-400">Após o primeiro mês, o valor volta para R$ 9,99/mês.</p>
                 </form>
             ) : (
                 <div className="text-center space-y-6">
+                    {/* 👇 MOSTRA O CUPOM TAMBÉM NA ABA DO PIX (VISUAL) */}
+                    {coupon === 'PRIMEIRA8' && !pixData && (
+                        <div className="bg-green-50 p-3 rounded-lg border border-green-200 mb-4 inline-block w-full text-left">
+                            <p className="font-bold text-green-800 text-sm flex items-center gap-2">
+                                <Tag size={16} /> Cupom Aplicado no PIX!
+                            </p>
+                            <p className="text-green-700 text-xs mt-1">
+                                Aproveite o preço promocional de <strong>R$ 1,99</strong>.
+                            </p>
+                        </div>
+                    )}
+
                     {!pixData ? (
                         <button onClick={handlePixGenerate} disabled={loading} className="w-full py-3 bg-azuri-600 text-white rounded-lg font-bold hover:bg-azuri-700 transition-colors">
-                            {loading ? <Loader2 className="animate-spin mx-auto" /> : `Gerar PIX (${PIX_AMOUNT_DISPLAY})`}
+                            {/* 👇 O botão agora mostra o valor correto (1,99 ou 9,99) */}
+                            {loading ? <Loader2 className="animate-spin mx-auto" /> : `Gerar PIX (${coupon === 'PRIMEIRA8' ? "R$ 1,99" : "R$ 9,99"})`}
                         </button>
                     ) : (
                         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">

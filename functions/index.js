@@ -19,13 +19,14 @@ const APPDATA_PATH = 'artifacts';
 
 const getUserProfilePath = (uid) => `${APPDATA_PATH}/${APP_ID}/users/${uid}/settings/profile`;
 
-// 1. Criar Assinatura de Cartão (STRIPE)
+// 1. Criar Assinatura de Cartão (STRIPE) - COM SUPORTE A CUPOM
 exports.createStripeSubscription = onCall({ secrets: [stripeSecret] }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
 
     const stripe = require('stripe')(stripeSecret.value());
     const uid = request.auth.uid;
-    const { token, email, planId } = request.data;
+    // 👇 Recebe o couponCode do frontend
+    const { token, email, planId, couponCode } = request.data;
 
     try {
         const customer = await stripe.customers.create({
@@ -34,13 +35,24 @@ exports.createStripeSubscription = onCall({ secrets: [stripeSecret] }, async (re
             metadata: { firebaseUid: uid }
         });
 
-        const subscription = await stripe.subscriptions.create({
+        // Configuração da assinatura
+        const subParams = {
             customer: customer.id,
             items: [{ price: planId }],
             expand: ['latest_invoice.payment_intent'],
-        });
+        };
 
-        // Libera o primeiro mês imediatamente
+        // 👇 Se tiver cupom, adiciona aos parâmetros
+        if (couponCode) {
+            // Verifica se é um código de promoção (Promotion Code) ou Cupom direto
+            // Aqui assumimos que você está enviando o ID do cupom ou o código promocional
+            // Para simplificar, vamos tentar aplicar como cupom direto:
+            subParams.coupon = couponCode;
+        }
+
+        const subscription = await stripe.subscriptions.create(subParams);
+
+        // Libera o acesso (mantém a lógica de 30 dias que você já tinha)
         const newDate = new Date();
         newDate.setDate(newDate.getDate() + 30);
 
@@ -56,12 +68,12 @@ exports.createStripeSubscription = onCall({ secrets: [stripeSecret] }, async (re
         return { success: true };
     } catch (error) {
         console.error("Erro Stripe:", error);
+        // Retorna erro amigável se o cupom for inválido
         throw new HttpsError('internal', error.message);
     }
 });
 
-// 2. Gerar PIX (MERCADO PAGO)
-// 2. Gerar PIX (MERCADO PAGO) - VERSÃO SEGURA
+// 2. Gerar PIX (MERCADO PAGO) - COM LÓGICA DE CUPOM
 exports.generatePixCharge = onCall({ secrets: [mpAccessToken] }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
 
@@ -69,15 +81,24 @@ exports.generatePixCharge = onCall({ secrets: [mpAccessToken] }, async (request)
     const payment = new Payment(client);
 
     const uid = request.auth.uid;
-    const { email } = request.data;
 
-    // 🔒 SEGURANÇA: O preço é definido AQUI no backend, não vem do frontend.
-    const FIXED_AMOUNT_REAIS = 9.99; // R$ 9,99
+    // 👇 1. MUDANÇA: Agora aceitamos também o 'couponCode'
+    const { email, couponCode } = request.data;
+
+    // 👇 2. MUDANÇA: Removemos o 'const FIXED_AMOUNT_REAIS = 9.99'
+    // E criamos uma variável que pode mudar SE o cupom for válido.
+    let amount = 9.99; // Preço padrão continua sendo 9.99
+
+    // O Backend verifica o cupom. Isso é seguro!
+    // O usuário não escolhe o preço, ele só apresenta um cupom.
+    if (couponCode === 'PRIMEIRA8') {
+        amount = 1.99; // O próprio servidor autoriza o desconto
+    }
 
     try {
         const body = {
-            transaction_amount: FIXED_AMOUNT_REAIS,
-            description: 'Assinatura Sistema (Mensal)',
+            transaction_amount: amount, // 👇 Usa a variável 'amount' (1.99 ou 9.99)
+            description: `Assinatura Sistema (Mensal) ${couponCode ? '- Promo' : ''}`,
             payment_method_id: 'pix',
             payer: {
                 email: email

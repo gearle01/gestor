@@ -64,7 +64,10 @@ export const AgendaView = ({ db, user, appId }) => {
         if (!user) return;
         const fetchData = async () => {
             const docSnap = await getDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile'));
-            if (docSnap.exists()) setWorkSettings(docSnap.data());
+            if (docSnap.exists()) {
+                // 👇 FIX: Merge seguro para evitar perder workStart/workEnd
+                setWorkSettings(prev => ({ ...prev, ...docSnap.data() }));
+            }
 
             const qProd = query(collection(db, 'artifacts', appId, 'users', user.uid, 'products'));
             const snapProd = await getDocs(qProd);
@@ -228,8 +231,9 @@ export const AgendaView = ({ db, user, appId }) => {
         return workSettings.workDays && workSettings.workDays[dayOfWeek] === false;
     };
     const generateHours = () => {
-        const start = parseInt(workSettings.workStart.split(':')[0]);
-        const end = parseInt(workSettings.workEnd.split(':')[0]);
+        // 👇 FIX: Fallback seguro para evitar crash se workStart/workEnd forem undefined
+        const start = parseInt((workSettings.workStart || '09:00').split(':')[0]);
+        const end = parseInt((workSettings.workEnd || '19:00').split(':')[0]);
         const hours = [];
         for (let i = start; i <= end; i++) hours.push(i < 10 ? `0${i}` : `${i}`);
         return hours;

@@ -9,7 +9,7 @@ import { auth, db, appId } from './firebase.js';
 import LoginScreen from './pages/LoginScreen.jsx';
 import DashboardView from './pages/DashboardView.jsx';
 import FinancialView from './pages/FinancialView.jsx';
-import { ClientsView, ServicesView, ProductsView, ProfessionalsView, ReportsView, AgendaView, SettingsView, HelpView } from './pages/ManagementViews.jsx';
+import { ClientsView, ServicesView, ProductsView, ProfessionalsView, ReportsView, AgendaView, SettingsView, HelpView } from './pages/views';
 import PaymentView from './pages/PaymentView.jsx';
 import PaymentBanner from './components/PaymentBanner.jsx';
 import WelcomeBanner from './components/WelcomeBanner.jsx';

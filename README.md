@@ -1,16 +1,39 @@
-# React + Vite
+# Gestor Pro - Sistema de Gestão para Profissionais
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Bem-vindo ao **Gestor Pro**, uma solução completa e moderna para gerenciamento de atendimentos, clientes e finanças. Este projeto foi desenvolvido com **React + Vite** e utiliza **Firebase** como backend.
 
-Currently, two official plugins are available:
+## 🚀 Funcionalidades Principais
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 📅 Agenda Inteligente
+- **Linha do Tempo em Tempo Real:** Indicador visual "AGORA" que mostra exatamente onde você está no dia.
+- **Agendamento Recorrente:** Crie agendamentos que se repetem (semanal/quinzenal) automaticamente.
+- **Integração com WhatsApp:** Botão direto para confirmar horários com clientes, com mensagens personalizadas (Bom dia/Boa tarde).
 
-## React Compiler
+### 👥 Gestão de Clientes
+- **Prontuário Digital:** Histórico completo, anamnese e preferências.
+- **Galeria de Fotos:** Armazene fotos de "Antes e Depois" de forma segura.
+- **Shadow Ban:** Bloqueie clientes problemáticos de agendar online sem que eles saibam.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 💰 Financeiro & Estoque
+- **Controle de Caixa:** Acompanhe entradas e saídas.
+- **Metas Financeiras:** Defina objetivos mensais e visualize o progresso.
+- **Checkout Integrado:** Finalize atendimentos adicionando produtos do estoque e calculando o troco.
 
-## Expanding the ESLint configuration
+### 🌐 Agendamento Online
+- **Link Público:** Seus clientes podem agendar sozinhos através de um link exclusivo.
+- **Validação de Horários:** O sistema impede conflitos de agenda automaticamente.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🛠️ Tecnologias Utilizadas
+- **Frontend:** React, TailwindCSS, Lucide Icons
+- **Backend:** Firebase (Firestore, Auth, Storage)
+- **Build Tool:** Vite
+
+## 📦 Como Rodar o Projeto
+
+1. Clone o repositório
+2. Instale as dependências: `npm install`
+3. Crie um arquivo `.env` com suas chaves do Firebase
+4. Rode o servidor de desenvolvimento: `npm run dev`
+
+---
+Desenvolvido com ❤️ para facilitar o seu dia a dia.

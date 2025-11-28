@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle, ArrowRight } from 'lucide-react'; // 👇 Adicionei ArrowRight
 
 export const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, type = "button", disabled = false }) => {
   const baseStyle = "px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 transition-all active:scale-95 text-sm disabled:opacity-50 disabled:cursor-not-allowed";
@@ -80,53 +80,64 @@ export const Modal = ({ title, onClose, children }) => (
   </div>
 );
 
+// 👇 TABELA COM SCROLL LATERAL E DICA VISUAL
 export const DataTable = ({ columns, data, onDelete, onRowClick }) => (
-  <div className="overflow-x-auto">
-    <table className="w-full text-left border-collapse">
-      <thead>
-        <tr className="border-b border-gray-100">
-          {columns.map((col, i) => (
-            <th key={i} className="py-3 px-4 text-xs font-bold text-gray-500 uppercase bg-gray-50 first:rounded-l-lg last:rounded-r-lg">
-              {col.header}
-            </th>
-          ))}
-          <th className="py-3 px-4 bg-gray-50 rounded-r-lg"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {data.length === 0 ? (
-          <tr>
-            <td colSpan={columns.length + 1} className="py-8 text-center text-gray-400 text-sm">
-              Nenhum registro encontrado.
-            </td>
+  <div className="flex flex-col">
+    {/* Dica Visual (aparece só em telas pequenas 'md:hidden') */}
+    <div className="md:hidden flex justify-end mb-2">
+      <div className="text-[10px] uppercase font-bold text-gray-400 flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-full animate-pulse">
+        Arraste para o lado <ArrowRight size={12} />
+      </div>
+    </div>
+
+    {/* Container com Scroll Horizontal (overflow-x-auto) */}
+    <div className="overflow-x-auto rounded-lg border border-gray-100 shadow-sm">
+      <table className="w-full text-left border-collapse whitespace-nowrap"> {/* whitespace-nowrap impede quebra de linha feia */}
+        <thead>
+          <tr className="border-b border-gray-100 bg-gray-50">
+            {columns.map((col, i) => (
+              <th key={i} className="py-3 px-4 text-xs font-bold text-gray-500 uppercase first:rounded-l-lg last:rounded-r-lg">
+                {col.header}
+              </th>
+            ))}
+            <th className="py-3 px-4 rounded-r-lg"></th>
           </tr>
-        ) : (
-          data.map((row) => (
-            <tr
-              key={row.id}
-              onClick={() => onRowClick && onRowClick(row)}
-              className={`border-b border-gray-50 hover:bg-azuri-50/50 transition-colors group ${onRowClick ? 'cursor-pointer' : ''}`}
-            >
-              {columns.map((col, i) => (
-                <td key={i} className="py-3 px-4 text-sm text-gray-700">
-                  {col.render ? col.render(row) : row[col.accessor]}
-                </td>
-              ))}
-              <td className="py-3 px-4 text-right">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete && onDelete(row.id);
-                  }}
-                  className="text-red-400 hover:text-red-600 transition-colors p-2"
-                >
-                  <X size={18} />
-                </button>
+        </thead>
+        <tbody>
+          {data.length === 0 ? (
+            <tr>
+              <td colSpan={columns.length + 1} className="py-8 text-center text-gray-400 text-sm">
+                Nenhum registro encontrado.
               </td>
             </tr>
-          ))
-        )}
-      </tbody>
-    </table>
+          ) : (
+            data.map((row) => (
+              <tr
+                key={row.id}
+                onClick={() => onRowClick && onRowClick(row)}
+                className={`border-b border-gray-50 hover:bg-azuri-50/50 transition-colors group ${onRowClick ? 'cursor-pointer' : ''}`}
+              >
+                {columns.map((col, i) => (
+                  <td key={i} className="py-3 px-4 text-sm text-gray-700">
+                    {col.render ? col.render(row) : row[col.accessor]}
+                  </td>
+                ))}
+                <td className="py-3 px-4 text-right">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete && onDelete(row.id);
+                    }}
+                    className="text-red-400 hover:text-red-600 transition-colors p-2"
+                  >
+                    <X size={18} />
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
   </div>
 );

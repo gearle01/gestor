@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, AlertCircle, ArrowRight } from 'lucide-react';
+import { X, AlertCircle, ArrowRight, CheckCircle, AlertTriangle } from 'lucide-react';
 
 export const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, type = "button", disabled = false }) => {
   const baseStyle = "px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 transition-all active:scale-95 text-sm disabled:opacity-50 disabled:cursor-not-allowed";
@@ -133,3 +133,18 @@ export const DataTable = ({ columns, data, onDelete, onRowClick }) => (
     </div>
   </div>
 );
+
+export const Toast = ({ message, type = 'success', onClose, visible }) => {
+  if (!visible) return null;
+
+  const bg = type === 'success' ? 'bg-green-600' : 'bg-red-600';
+  const icon = type === 'success' ? <CheckCircle size={20} /> : <AlertTriangle size={20} />;
+
+  return (
+    <div className={`fixed bottom-4 right-4 ${bg} text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-300 z-[200]`}>
+      {icon}
+      <span className="font-medium">{message}</span>
+      <button onClick={onClose} className="ml-4 opacity-80 hover:opacity-100"><X size={18} /></button>
+    </div>
+  );
+};

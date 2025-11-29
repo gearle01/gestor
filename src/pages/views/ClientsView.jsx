@@ -122,7 +122,13 @@ export const ClientsView = ({ db, user, appId, searchTerm }) => {
                 await Promise.all(batchPromises);
                 alert(`${contacts.length} contatos importados!`);
             }
-        } catch (err) { console.log(err); } finally { setImporting(false); }
+        } catch (err) {
+            // ✅ SEGURANÇA: Não expor erros em produção
+            if (process.env.NODE_ENV === 'development') {
+                console.error('Erro ao importar contatos:', err);
+            }
+            alert('Erro ao importar contatos. Tente novamente.');
+        } finally { setImporting(false); }
     };
 
     return (

@@ -7,124 +7,242 @@ const { MercadoPagoConfig, Payment } = require('mercadopago');
 admin.initializeApp();
 const db = admin.firestore();
 
-// Segredos (Stripe + Mercado Pago)
+// Segredos
 const stripeSecret = defineSecret("STRIPE_SECRET");
-const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET"); // Necessário para renovação
+const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
 const mpAccessToken = defineSecret("MP_ACCESS_TOKEN");
 
-// --- CONFIGURAÇÕES ---
+// Constantes do Projeto
 const PROJECT_ID = 'gestor-25758';
 const APP_ID = 'gestor-6040299391d8ecfb5972a8ade78c88bde8f50bdd';
 const APPDATA_PATH = 'artifacts';
 
+// Helpers de Caminho
+const getUserPaymentHistoryPath = (uid) => `${APPDATA_PATH}/${APP_ID}/users/${uid}/payments/history`;
 const getUserProfilePath = (uid) => `${APPDATA_PATH}/${APP_ID}/users/${uid}/settings/profile`;
 
-// 1. Criar Assinatura de Cartão (STRIPE) - COM SUPORTE A CUPOM
-exports.createStripeSubscription = onCall({ secrets: [stripeSecret] }, async (request) => {
-    if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+// 🎟️ FUNÇÃO 1: Verificar e gerar cupom para novo usuário
+exports.getFirstPurchaseCoupon = onCall({ secrets: [stripeSecret] }, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Usuário não autenticado');
 
     const stripe = require('stripe')(stripeSecret.value());
     const uid = request.auth.uid;
-    // 👇 Recebe o couponCode do frontend
-    const { token, email, planId, couponCode } = request.data;
 
     try {
-        const customer = await stripe.customers.create({
-            email: email,
-            source: token,
-            metadata: { firebaseUid: uid }
-        });
+        // 1. Verificar se o usuário já tem um pagamento registrado (usando o caminho que você pediu)
+        const userPaymentRef = db.doc(getUserPaymentHistoryPath(uid));
+        const userPaymentSnap = await userPaymentRef.get();
 
-        // Configuração da assinatura
-        const subParams = {
-            customer: customer.id,
-            items: [{ price: planId }],
-            expand: ['latest_invoice.payment_intent'],
-        };
-
-        // 👇 Se tiver cupom, adiciona aos parâmetros
-        if (couponCode) {
-            // Verifica se é um código de promoção (Promotion Code) ou Cupom direto
-            // Aqui assumimos que você está enviando o ID do cupom ou o código promocional
-            // Para simplificar, vamos tentar aplicar como cupom direto:
-            subParams.coupon = couponCode;
+        // Se o usuário já tem histórico de pagamento, retorna nulo (sem cupom)
+        if (userPaymentSnap.exists && userPaymentSnap.data().couponUsed === true) {
+            return {
+                success: true,
+                coupon: null,
+                message: 'Cupom já foi utilizado para este usuário'
+            };
         }
 
-        const subscription = await stripe.subscriptions.create(subParams);
+        // 2. Se é primeira vez, verifica se cupom existe no Stripe
+        try {
+            await stripe.coupons.retrieve('PRIMEIRA8');
+            return {
+                success: true,
+                coupon: 'PRIMEIRA8',
+                message: 'Cupom válido para primeira compra'
+            };
+        } catch (error) {
+            // Se cupom não existe, cria um novo
+            await stripe.coupons.create({
+                id: 'PRIMEIRA8',
+                percent_off: 80, // 80% de desconto
+                duration: 'repeating',
+                duration_in_months: 1,
+                max_redemptions: 999
+            });
 
-        // Libera o acesso (mantém a lógica de 30 dias que você já tinha)
-        const newDate = new Date();
-        newDate.setDate(newDate.getDate() + 30);
+            return {
+                success: true,
+                coupon: 'PRIMEIRA8',
+                message: 'Cupom criado e aplicado'
+            };
+        }
 
-        await db.doc(getUserProfilePath(uid)).set({
-            stripeCustomerId: customer.id,
-            stripeSubscriptionId: subscription.id,
-            paymentMethod: 'credit_card',
-            isPaid: true,
-            paymentDueDate: admin.firestore.Timestamp.fromDate(newDate),
-            dueDays: 30
-        }, { merge: true });
-
-        return { success: true };
     } catch (error) {
-        console.error("Erro Stripe:", error);
-        // Retorna erro amigável se o cupom for inválido
-        throw new HttpsError('internal', error.message);
+        console.error('Erro ao gerar cupom:', error);
+        throw new HttpsError('internal', 'Erro ao processar cupom');
     }
 });
 
-// 2. Gerar PIX (MERCADO PAGO) - COM LÓGICA DE CUPOM
+// 🎟️ FUNÇÃO 2: Registrar uso do cupom
+exports.markCouponAsUsed = onCall(async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Usuário não autenticado');
+
+    const uid = request.auth.uid;
+    const { subscriptionId, amount } = request.data;
+
+    try {
+        await db.doc(getUserPaymentHistoryPath(uid)).set({
+            couponUsed: true,
+            couponUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+            subscriptionId: subscriptionId || null,
+            firstPaymentAmount: amount || null,
+            paymentMethod: 'stripe'
+        }, { merge: true });
+
+        return { success: true, message: 'Cupom registrado como utilizado' };
+    } catch (error) {
+        console.error('Erro ao marcar cupom:', error);
+        throw new HttpsError('internal', 'Erro ao registrar cupom');
+    }
+});
+
+// 💳 FUNÇÃO 3: Criar assinatura com cupom (Stripe)
+exports.createStripeSubscription = onCall({ secrets: [stripeSecret] }, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Usuário não autenticado');
+
+    const stripe = require('stripe')(stripeSecret.value());
+    const uid = request.auth.uid;
+    const { token, email, planId, couponCode } = request.data;
+
+    if (!token || !email || !planId) {
+        throw new HttpsError('invalid-argument', 'Dados obrigatórios faltando');
+    }
+
+    try {
+        // 1. Verificar se cupom já foi usado por este usuário
+        let applyCoupon = null;
+
+        if (couponCode) {
+            const userPaymentSnap = await db.doc(getUserPaymentHistoryPath(uid)).get();
+            // Se NÃO existe ou NÃO usou cupom, aplica
+            if (!userPaymentSnap.exists || !userPaymentSnap.data().couponUsed) {
+                applyCoupon = couponCode;
+            }
+        }
+
+        // 2. Criar ou buscar cliente Stripe
+        let customer;
+        const existingCustomers = await stripe.customers.list({ email: email, limit: 1 });
+
+        if (existingCustomers.data.length > 0) {
+            customer = existingCustomers.data[0];
+        } else {
+            customer = await stripe.customers.create({
+                email: email,
+                metadata: { firebaseUID: uid }
+            });
+        }
+
+        // 3. Criar fonte de pagamento
+        const paymentMethod = await stripe.paymentMethods.create({
+            type: 'card',
+            card: { token: token }
+        });
+
+        await stripe.paymentMethods.attach(paymentMethod.id, { customer: customer.id });
+
+        // 4. Criar assinatura
+        const subscriptionParams = {
+            customer: customer.id,
+            items: [{ price: planId }],
+            default_payment_method: paymentMethod.id,
+            metadata: { firebaseUID: uid }
+        };
+
+        if (applyCoupon) {
+            subscriptionParams.coupon = applyCoupon;
+        }
+
+        const subscription = await stripe.subscriptions.create(subscriptionParams);
+
+        // 5. Registrar cupom como usado NO BANCO DE DADOS
+        if (applyCoupon) {
+            await db.doc(getUserPaymentHistoryPath(uid)).set({
+                couponUsed: true,
+                couponCode: applyCoupon,
+                couponUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+                subscriptionId: subscription.id,
+                customerId: customer.id,
+                firstPaymentAmount: subscription.items.data[0].price.unit_amount / 100,
+                paymentMethod: 'stripe'
+            }, { merge: true });
+        }
+
+        // 6. Atualizar perfil do usuário
+        await db.doc(getUserProfilePath(uid)).set({
+            isPaid: true,
+            paymentMethod: 'stripe',
+            customerId: customer.id,
+            subscriptionId: subscription.id,
+            paymentDate: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        return {
+            success: true,
+            subscriptionId: subscription.id,
+            couponApplied: !!applyCoupon,
+            message: applyCoupon ? 'Assinatura criada com cupom!' : 'Assinatura criada com sucesso!'
+        };
+
+    } catch (error) {
+        console.error('Erro ao criar assinatura:', error);
+        throw new HttpsError('internal', error.message || 'Erro ao processar pagamento');
+    }
+});
+
+// 💠 FUNÇÃO 4: Gerar PIX (Mercado Pago) - Adaptado para nova lógica de cupom
 exports.generatePixCharge = onCall({ secrets: [mpAccessToken] }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
 
     const client = new MercadoPagoConfig({ accessToken: mpAccessToken.value() });
     const payment = new Payment(client);
-
     const uid = request.auth.uid;
-
-    // 👇 1. MUDANÇA: Agora aceitamos também o 'couponCode'
     const { email, couponCode } = request.data;
 
-    // 👇 2. MUDANÇA: Removemos o 'const FIXED_AMOUNT_REAIS = 9.99'
-    // E criamos uma variável que pode mudar SE o cupom for válido.
-    let amount = 9.99; // Preço padrão continua sendo 9.99
+    // Verificar cupom usando a mesma lógica do Stripe
+    let amount = 9.99;
+    let couponApplied = false;
 
-    // O Backend verifica o cupom. Isso é seguro!
-    // O usuário não escolhe o preço, ele só apresenta um cupom.
     if (couponCode === 'PRIMEIRA8') {
-        amount = 1.99; // O próprio servidor autoriza o desconto
+        const userPaymentSnap = await db.doc(getUserPaymentHistoryPath(uid)).get();
+        if (!userPaymentSnap.exists || !userPaymentSnap.data().couponUsed) {
+            amount = 1.99;
+            couponApplied = true;
+        }
     }
 
     try {
         const body = {
-            transaction_amount: amount, // 👇 Usa a variável 'amount' (1.99 ou 9.99)
-            description: `Assinatura Sistema (Mensal) ${couponCode ? '- Promo' : ''}`,
+            transaction_amount: amount,
+            description: `Assinatura Sistema${couponApplied ? ' - Promo 1ª Compra' : ''}`,
             payment_method_id: 'pix',
-            payer: {
-                email: email
-            },
+            payer: { email: email },
             metadata: {
-                firebase_uid: uid
+                firebase_uid: uid,
+                coupon_applied: couponApplied,
+                coupon_code: couponApplied ? couponCode : null
             },
             notification_url: `https://us-central1-${PROJECT_ID}.cloudfunctions.net/handleMercadoPagoWebhook`
         };
 
         const result = await payment.create({ body });
-
         const pointOfInteraction = result.point_of_interaction.transaction_data;
 
         return {
             qrCodeBase64: pointOfInteraction.qr_code_base64,
             pixCode: pointOfInteraction.qr_code,
-            paymentId: result.id
+            paymentId: result.id,
+            couponApplied: couponApplied,
+            amount: amount
         };
+
     } catch (error) {
         console.error("Erro Mercado Pago:", error);
         throw new HttpsError('internal', error.message || 'Erro ao gerar Pix');
     }
 });
 
-// 3. Webhook do Mercado Pago (Para PIX)
+// 🔔 WEBHOOKS (Mercado Pago e Stripe)
 exports.handleMercadoPagoWebhook = onRequest({ secrets: [mpAccessToken] }, async (req, res) => {
     const type = req.body.type || req.query.type;
     const dataId = req.body.data?.id || req.query['data.id'];
@@ -138,7 +256,10 @@ exports.handleMercadoPagoWebhook = onRequest({ secrets: [mpAccessToken] }, async
 
         if (paymentData.status === 'approved') {
             const uid = paymentData.metadata.firebase_uid;
+            const couponApplied = paymentData.metadata.coupon_applied === true;
+
             if (uid) {
+                // Atualizar perfil
                 const newDate = new Date();
                 newDate.setDate(newDate.getDate() + 30);
                 await db.doc(getUserProfilePath(uid)).set({
@@ -147,6 +268,16 @@ exports.handleMercadoPagoWebhook = onRequest({ secrets: [mpAccessToken] }, async
                     dueDays: 30,
                     paymentMethod: 'pix_mercadopago'
                 }, { merge: true });
+
+                // Registrar uso do cupom se aplicável
+                if (couponApplied) {
+                    await db.doc(getUserPaymentHistoryPath(uid)).set({
+                        couponUsed: true,
+                        couponCode: paymentData.metadata.coupon_code,
+                        couponUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        paymentMethod: 'pix_mercadopago'
+                    }, { merge: true });
+                }
                 console.log(`✅ PIX MP aprovado: ${uid}`);
             }
         }
@@ -156,7 +287,6 @@ exports.handleMercadoPagoWebhook = onRequest({ secrets: [mpAccessToken] }, async
     res.status(200).send('OK');
 });
 
-// 4. Webhook do Stripe (Para Renovação de Cartão)
 exports.handleStripeWebhook = onRequest({ secrets: [stripeSecret, stripeWebhookSecret] }, async (req, res) => {
     const stripe = require('stripe')(stripeSecret.value());
     let event;
@@ -165,14 +295,12 @@ exports.handleStripeWebhook = onRequest({ secrets: [stripeSecret, stripeWebhookS
         const signature = req.headers['stripe-signature'];
         event = stripe.webhooks.constructEvent(req.rawBody, signature, stripeWebhookSecret.value());
     } catch (err) {
-        console.error(`Webhook Stripe Error: ${err.message}`);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
     const object = event.data.object;
     let uid;
 
-    // Tenta encontrar o UID
     if (object.customer) {
         try {
             const customer = await stripe.customers.retrieve(object.customer);
@@ -181,29 +309,21 @@ exports.handleStripeWebhook = onRequest({ secrets: [stripeSecret, stripeWebhookS
     }
 
     if (uid) {
-        // Renovação de Assinatura com Sucesso
         if (event.type === 'invoice.payment_succeeded') {
             const newDate = new Date();
             newDate.setDate(newDate.getDate() + 30);
-
             await db.doc(getUserProfilePath(uid)).set({
                 isPaid: true,
                 paymentDueDate: admin.firestore.Timestamp.fromDate(newDate),
                 dueDays: 30
             }, { merge: true });
-            console.log(`✅ Renovação Stripe confirmada: ${uid}`);
         }
-
-        // Cancelamento ou Falha
-        // ✅ COMO DEVE FICAR:
         if (event.type === 'customer.subscription.deleted' || event.type === 'invoice.payment_failed') {
             await db.doc(getUserProfilePath(uid)).set({
                 isPaid: false,
-                // ADICIONE ESTA LINHA ABAIXO: 👇
                 paymentDueDate: admin.firestore.Timestamp.now(),
                 dueDays: 0
             }, { merge: true });
-            console.log(`❌ Assinatura Stripe cancelada/falhou: ${uid}`);
         }
     }
     res.json({ received: true });

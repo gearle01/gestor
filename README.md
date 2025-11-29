@@ -5,9 +5,11 @@ Bem-vindo ao **Gestor Pro**, uma solução completa e moderna para gerenciamento
 ## 🚀 Funcionalidades Principais
 
 ### 📅 Agenda Inteligente
-- **Linha do Tempo em Tempo Real:** Indicador visual "AGORA" que mostra exatamente onde você está no dia.
+- **Linha do Tempo & Auto-Scroll:** A agenda rola automaticamente para o horário atual e mostra uma linha marcadora em tempo real.
+- **Modo 24h / Comercial:** Alterne facilmente entre visualizar apenas o horário comercial ou o dia inteiro.
 - **Agendamento Recorrente:** Crie agendamentos que se repetem (semanal/quinzenal) automaticamente.
-- **Integração com WhatsApp:** Botão direto para confirmar horários com clientes, com mensagens personalizadas (Bom dia/Boa tarde).
+- **Integração com WhatsApp:** Botão direto para confirmar horários com clientes, com mensagens personalizadas.
+- **Notificações Modernas:** Feedback visual (Toasts) para todas as ações importantes.
 
 ### 👥 Gestão de Clientes
 - **Prontuário Digital:** Histórico completo, anamnese e preferências.

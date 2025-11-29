@@ -23,7 +23,11 @@ export const HelpView = () => {
                     <ul className="space-y-3 text-sm text-gray-600">
                         <li className="flex gap-2">
                             <Clock size={16} className="text-azuri-500 flex-shrink-0 mt-0.5" />
-                            <span><strong>Linha do Tempo "Agora":</strong> Uma linha azul indica exatamente o horário atual na sua agenda, facilitando a visualização do dia.</span>
+                            <span><strong>Linha do Tempo & Auto-Scroll:</strong> A agenda rola automaticamente para o horário atual ao abrir. Uma linha azul marca o minuto exato.</span>
+                        </li>
+                        <li className="flex gap-2">
+                            <Clock size={16} className="text-azuri-500 flex-shrink-0 mt-0.5" />
+                            <span><strong>Modo 24h:</strong> Alterne entre visualização comercial e 24 horas usando o botão (Sol/Lua) no topo da agenda.</span>
                         </li>
                         <li className="flex gap-2">
                             <Repeat size={16} className="text-azuri-500 flex-shrink-0 mt-0.5" />
@@ -32,6 +36,10 @@ export const HelpView = () => {
                         <li className="flex gap-2">
                             <DollarSign size={16} className="text-green-500 flex-shrink-0 mt-0.5" />
                             <span><strong>Checkout Integrado:</strong> Ao finalizar um atendimento, você pode adicionar produtos vendidos e o sistema já baixa do estoque e lança no financeiro.</span>
+                        </li>
+                        <li className="flex gap-2">
+                            <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5" />
+                            <span><strong>Notificações Inteligentes:</strong> O sistema agora avisa sobre sucessos e erros com mensagens discretas no canto da tela, sem interromper seu fluxo.</span>
                         </li>
                     </ul>
                 </Card>

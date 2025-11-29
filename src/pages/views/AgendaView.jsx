@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     Plus, Minus, UserPlus, Calendar, Clock, ChevronRight, ChevronLeft,
     Trash2, Info, Ban, Repeat, Briefcase, XCircle, AlertTriangle,
-    CheckCircle, DollarSign, ShoppingBag, Edit2, ShoppingCart, MessageCircle, FileText
+    CheckCircle, DollarSign, ShoppingBag, Edit2, ShoppingCart, MessageCircle, FileText,
+    Sun, Moon
 } from 'lucide-react';
 import { collection, addDoc, query, onSnapshot, deleteDoc, doc, where, getDoc, updateDoc, getDocs } from 'firebase/firestore';
-import { Card, Button, Input, Modal } from '../../components/UI';
+import { Card, Button, Input, Modal, Toast } from '../../components/UI';
 
 // --- CUSTOM ICONS ---
 const WhatsAppIcon = ({ size = 18, className = "" }) => (
@@ -28,6 +29,13 @@ export const AgendaView = ({ db, user, appId }) => {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [show24Hours, setShow24Hours] = useState(false);
+    const [toast, setToast] = useState({ message: '', type: '', visible: false });
+
+    const showToast = (message, type = 'success') => {
+        setToast({ message, type, visible: true });
+        setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 3000);
+    };
 
     // Estados de Modais
     const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
@@ -101,6 +109,20 @@ export const AgendaView = ({ db, user, appId }) => {
         });
         return () => unsub();
     }, [user, db, appId, currentDate]);
+
+    // 3. Scroll para o horário atual (Auto-Scroll)
+    useEffect(() => {
+        if (currentDate === new Date().toISOString().split('T')[0]) {
+            const hour = new Date().getHours();
+            const hourString = hour < 10 ? `0${hour}` : `${hour}`;
+            const el = document.getElementById(`hour-${hourString}`);
+            if (el) {
+                setTimeout(() => {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 500);
+            }
+        }
+    }, [currentDate, appointments]); // Recalcula ao mudar data ou carregar agendamentos
 
     // --- LÓGICA DE CLIENTE ---
     const handleClientNameChange = (e) => {
@@ -186,7 +208,7 @@ export const AgendaView = ({ db, user, appId }) => {
         const newQty = item.quantity + delta;
         if (newQty <= 0) newItems.splice(index, 1);
         else {
-            if (newQty > parseInt(item.stock)) { alert(`Apenas ${item.stock} un em estoque!`); return; }
+            if (newQty > parseInt(item.stock)) { showToast(`Apenas ${item.stock} un em estoque!`, 'error'); return; }
             item.quantity = newQty;
         }
         setCheckoutItems(newItems);
@@ -215,8 +237,8 @@ export const AgendaView = ({ db, user, appId }) => {
                 }
             }
             setIsCheckoutModalOpen(false); setApptToCheckout(null);
-            alert(`Venda finalizada! R$ ${total.toFixed(2)}`);
-        } catch (error) { alert("Erro ao finalizar."); } finally { setSaving(false); }
+            showToast(`Venda finalizada! R$ ${total.toFixed(2)}`, 'success');
+        } catch (error) { showToast("Erro ao finalizar.", 'error'); } finally { setSaving(false); }
     };
 
     // --- UI AUXILIAR ---
@@ -231,6 +253,11 @@ export const AgendaView = ({ db, user, appId }) => {
         return workSettings.workDays && workSettings.workDays[dayOfWeek] === false;
     };
     const generateHours = () => {
+        if (show24Hours) {
+            const hours = [];
+            for (let i = 0; i < 24; i++) hours.push(i < 10 ? `0${i}` : `${i}`);
+            return hours;
+        }
         // 👇 FIX: Fallback seguro para evitar crash se workStart/workEnd forem undefined
         const start = parseInt((workSettings.workStart || '09:00').split(':')[0]);
         const end = parseInt((workSettings.workEnd || '19:00').split(':')[0]);
@@ -265,7 +292,8 @@ export const AgendaView = ({ db, user, appId }) => {
             }
             await Promise.all(promises);
             setIsModalOpen(false);
-        } catch (error) { alert("Erro ao salvar."); } finally { setSaving(false); }
+            showToast("Agendamento salvo com sucesso!", 'success');
+        } catch (error) { showToast("Erro ao salvar.", 'error'); } finally { setSaving(false); }
     };
     const initiateCancel = (appt) => { setApptToCancel(appt); setCancelReason(''); setIsCancelModalOpen(true); };
     const confirmCancel = async () => {
@@ -275,7 +303,8 @@ export const AgendaView = ({ db, user, appId }) => {
                 status: 'cancelled', cancelReason: cancelReason || 'Sem motivo', cancelledAt: new Date().toISOString()
             });
             setIsCancelModalOpen(false);
-        } catch (error) { alert("Erro ao cancelar."); }
+            showToast("Agendamento cancelado.", 'success');
+        } catch (error) { showToast("Erro ao cancelar.", 'error'); }
     };
     const changeDate = (days) => {
         const d = new Date(currentDate + 'T00:00:00');
@@ -302,6 +331,13 @@ export const AgendaView = ({ db, user, appId }) => {
                     </div>
                     <button onClick={() => changeDate(1)} className="p-2 hover:bg-white rounded-lg shadow-sm"><ChevronRight size={20} /></button>
                 </div>
+                <button
+                    onClick={() => setShow24Hours(!show24Hours)}
+                    className={`p-2 rounded-xl border transition-all flex items-center gap-2 text-sm font-bold ${show24Hours ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200'}`}
+                >
+                    {show24Hours ? <Moon size={18} /> : <Sun size={18} />}
+                    {show24Hours ? '24h' : 'Comercial'}
+                </button>
             </div>
 
             {/* AGENDA */}
@@ -320,7 +356,7 @@ export const AgendaView = ({ db, user, appId }) => {
                         const linePosition = isCurrentHour ? (now.getMinutes() / 60) * 100 : 0;
 
                         return (
-                            <div key={hour} className="flex border-b border-gray-50 min-h-[100px] group hover:bg-gray-50/50 relative">
+                            <div key={hour} id={`hour-${hour}`} className="flex border-b border-gray-50 min-h-[100px] group hover:bg-gray-50/50 relative">
                                 {/* COLUNA ESQUERDA (HORA + LINHA AZUL) */}
                                 <div className="w-24 border-r border-gray-100 p-4 flex flex-col items-center relative">
                                     <span className={`text-xl font-bold transition-colors ${isCurrentHour ? 'text-azuri-600' : 'text-gray-400'}`}>
@@ -328,15 +364,18 @@ export const AgendaView = ({ db, user, appId }) => {
                                     </span>
                                     <button onClick={() => handleOpenModal(hour)} className="mt-2 opacity-0 group-hover:opacity-100 bg-azuri-100 text-azuri-600 p-1 rounded hover:bg-azuri-200 transition-all"><Plus size={16} /></button>
 
+
                                     {/* 🔵 LINHA AZUL */}
-                                    {isCurrentHour && (
-                                        <div
-                                            className="absolute w-full border-t-2 border-azuri-500 z-10 pointer-events-none"
-                                            style={{ top: `${linePosition}%` }}
-                                        >
-                                            <div className="absolute right-0 -mt-1.5 w-3 h-3 bg-azuri-500 rounded-full translate-x-1.5 shadow-sm"></div>
-                                        </div>
-                                    )}
+                                    {
+                                        isCurrentHour && (
+                                            <div
+                                                className="absolute w-full border-t-2 border-azuri-500 z-10 pointer-events-none"
+                                                style={{ top: `${linePosition}%` }}
+                                            >
+                                                <div className="absolute right-0 -mt-1.5 w-3 h-3 bg-azuri-500 rounded-full translate-x-1.5 shadow-sm"></div>
+                                            </div>
+                                        )
+                                    }
                                 </div>
 
                                 {/* COLUNA DIREITA (CONTEÚDO) */}
@@ -368,153 +407,160 @@ export const AgendaView = ({ db, user, appId }) => {
                             </div>
                         );
                     })}
-                </div>
+                </div >
             )}
 
             {/* MODAL DE NOVO AGENDAMENTO */}
-            {isModalOpen && (
-                <Modal title="Novo Agendamento" onClose={() => setIsModalOpen(false)}>
-                    <form onSubmit={handleSave} className="space-y-4">
+            {
+                isModalOpen && (
+                    <Modal title="Novo Agendamento" onClose={() => setIsModalOpen(false)}>
+                        <form onSubmit={handleSave} className="space-y-4">
 
-                        {/* CLIENTE */}
-                        <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Cliente</label>
-                            <div className="relative">
-                                <UserPlus size={18} className="absolute left-3 top-3 text-gray-400" />
-                                <input
-                                    list="clients-list"
-                                    className="w-full pl-10 p-3 border border-gray-300 rounded-lg outline-none focus:border-azuri-500 bg-white"
-                                    value={newAppt.client}
-                                    onChange={handleClientNameChange}
-                                    placeholder="Digite ou selecione..."
-                                    required
-                                />
-                                <datalist id="clients-list">
-                                    {clientsList.map(c => (
-                                        <option key={c.id} value={c.name} />
-                                    ))}
-                                </datalist>
-                            </div>
-                            {newAppt.clientPhone && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><CheckCircle size={10} /> Cliente identificado</p>}
-                        </div>
-
-                        {/* TELEFONE */}
-                        <Input
-                            label="WhatsApp / Telefone"
-                            value={newAppt.clientPhone}
-                            onChange={e => setNewAppt({ ...newAppt, clientPhone: e.target.value })}
-                            placeholder="(00) 00000-0000"
-                            rightElement={<MessageCircle size={18} className="text-gray-400" />}
-                        />
-
-                        {/* SERVIÇO */}
-                        <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Serviço</label>
-                            <div className="flex items-center gap-2">
-                                <Briefcase size={18} className="text-gray-400" />
-                                <select className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:border-azuri-500 bg-white" onChange={handleServiceChange} value={newAppt.serviceId}>
-                                    <option value="">Selecione um serviço...</option>
-                                    {services.map(s => (<option key={s.id} value={s.id}>{s.name} - R$ {parseFloat(s.price).toFixed(2)}</option>))}
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <Input label="Horário" type="time" value={newAppt.time} onChange={e => setNewAppt({ ...newAppt, time: e.target.value })} required rightElement={<Clock size={18} className="text-gray-400" />} />
-                            <Input label="Duração (min)" type="number" value={newAppt.duration} onChange={e => setNewAppt({ ...newAppt, duration: e.target.value })} rightElement={<Clock size={18} className="text-gray-400" />} />
-                        </div>
-
-                        <Input label="Obs" value={newAppt.notes} onChange={e => setNewAppt({ ...newAppt, notes: e.target.value })} rightElement={<FileText size={18} className="text-gray-400" />} />
-
-                        <div className="bg-azuri-50 p-4 rounded-xl border border-azuri-100">
-                            <label className="flex items-center gap-3 cursor-pointer mb-3">
-                                <input type="checkbox" className="w-5 h-5 text-azuri-600 rounded" checked={newAppt.isRecurring} onChange={(e) => setNewAppt({ ...newAppt, isRecurring: e.target.checked })} />
-                                <div className="flex items-center gap-2 font-bold text-azuri-800"><Repeat size={18} /> Repetir Agendamento?</div>
-                            </label>
-                            {newAppt.isRecurring && (
-                                <div className="grid grid-cols-2 gap-3 pl-8 animate-in fade-in">
-                                    <div><span className="text-xs font-bold text-gray-500 uppercase">Frequência</span><select value={newAppt.recurrenceType} onChange={e => setNewAppt({ ...newAppt, recurrenceType: e.target.value })} className="w-full p-2 mt-1 text-sm border rounded-lg bg-white"><option value="weekly">Semanal</option><option value="biweekly">Quinzenal</option></select></div>
-                                    <div><span className="text-xs font-bold text-gray-500 uppercase">Repetições</span><select value={newAppt.recurrenceCount} onChange={e => setNewAppt({ ...newAppt, recurrenceCount: e.target.value })} className="w-full p-2 mt-1 text-sm border rounded-lg bg-white"><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select></div>
+                            {/* CLIENTE */}
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Cliente</label>
+                                <div className="relative">
+                                    <UserPlus size={18} className="absolute left-3 top-3 text-gray-400" />
+                                    <input
+                                        list="clients-list"
+                                        className="w-full pl-10 p-3 border border-gray-300 rounded-lg outline-none focus:border-azuri-500 bg-white"
+                                        value={newAppt.client}
+                                        onChange={handleClientNameChange}
+                                        placeholder="Digite ou selecione..."
+                                        required
+                                    />
+                                    <datalist id="clients-list">
+                                        {clientsList.map(c => (
+                                            <option key={c.id} value={c.name} />
+                                        ))}
+                                    </datalist>
                                 </div>
-                            )}
-                        </div>
-                        <Button className="w-full py-3" type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Confirmar'}</Button>
-                    </form>
-                </Modal>
-            )}
+                                {newAppt.clientPhone && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><CheckCircle size={10} /> Cliente identificado</p>}
+                            </div>
+
+                            {/* TELEFONE */}
+                            <Input
+                                label="WhatsApp / Telefone"
+                                value={newAppt.clientPhone}
+                                onChange={e => setNewAppt({ ...newAppt, clientPhone: e.target.value })}
+                                placeholder="(00) 00000-0000"
+                                rightElement={<MessageCircle size={18} className="text-gray-400" />}
+                            />
+
+                            {/* SERVIÇO */}
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Serviço</label>
+                                <div className="flex items-center gap-2">
+                                    <Briefcase size={18} className="text-gray-400" />
+                                    <select className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:border-azuri-500 bg-white" onChange={handleServiceChange} value={newAppt.serviceId}>
+                                        <option value="">Selecione um serviço...</option>
+                                        {services.map(s => (<option key={s.id} value={s.id}>{s.name} - R$ {parseFloat(s.price).toFixed(2)}</option>))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="Horário" type="time" value={newAppt.time} onChange={e => setNewAppt({ ...newAppt, time: e.target.value })} required rightElement={<Clock size={18} className="text-gray-400" />} />
+                                <Input label="Duração (min)" type="number" value={newAppt.duration} onChange={e => setNewAppt({ ...newAppt, duration: e.target.value })} rightElement={<Clock size={18} className="text-gray-400" />} />
+                            </div>
+
+                            <Input label="Obs" value={newAppt.notes} onChange={e => setNewAppt({ ...newAppt, notes: e.target.value })} rightElement={<FileText size={18} className="text-gray-400" />} />
+
+                            <div className="bg-azuri-50 p-4 rounded-xl border border-azuri-100">
+                                <label className="flex items-center gap-3 cursor-pointer mb-3">
+                                    <input type="checkbox" className="w-5 h-5 text-azuri-600 rounded" checked={newAppt.isRecurring} onChange={(e) => setNewAppt({ ...newAppt, isRecurring: e.target.checked })} />
+                                    <div className="flex items-center gap-2 font-bold text-azuri-800"><Repeat size={18} /> Repetir Agendamento?</div>
+                                </label>
+                                {newAppt.isRecurring && (
+                                    <div className="grid grid-cols-2 gap-3 pl-8 animate-in fade-in">
+                                        <div><span className="text-xs font-bold text-gray-500 uppercase">Frequência</span><select value={newAppt.recurrenceType} onChange={e => setNewAppt({ ...newAppt, recurrenceType: e.target.value })} className="w-full p-2 mt-1 text-sm border rounded-lg bg-white"><option value="weekly">Semanal</option><option value="biweekly">Quinzenal</option></select></div>
+                                        <div><span className="text-xs font-bold text-gray-500 uppercase">Repetições</span><select value={newAppt.recurrenceCount} onChange={e => setNewAppt({ ...newAppt, recurrenceCount: e.target.value })} className="w-full p-2 mt-1 text-sm border rounded-lg bg-white"><option value="2">2x</option><option value="4">4x</option><option value="8">8x</option></select></div>
+                                    </div>
+                                )}
+                            </div>
+                            <Button className="w-full py-3" type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Confirmar'}</Button>
+                        </form>
+                    </Modal>
+                )
+            }
 
             {/* MODAL CANCELAMENTO */}
-            {isCancelModalOpen && (
-                <Modal title="Cancelar" onClose={() => setIsCancelModalOpen(false)}>
-                    <div className="space-y-4">
-                        <div className="bg-red-50 p-4 rounded-lg flex items-start gap-3 border border-red-100"><AlertTriangle className="text-red-500 mt-1" size={20} /><div><h4 className="font-bold text-red-800">Você tem certeza?</h4><p className="text-sm text-red-600">O horário será liberado.</p></div></div>
-                        <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">Motivo</label>
-                            <select className="w-full p-3 border border-gray-300 rounded-lg outline-none bg-white mb-2" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}>
-                                <option value="">Selecione...</option><option value="Desistiu">Cliente desistiu</option><option value="No-Show">Não compareceu</option><option value="Imprevisto">Imprevisto</option><option value="Outro">Outro</option>
-                            </select>
+            {
+                isCancelModalOpen && (
+                    <Modal title="Cancelar" onClose={() => setIsCancelModalOpen(false)}>
+                        <div className="space-y-4">
+                            <div className="bg-red-50 p-4 rounded-lg flex items-start gap-3 border border-red-100"><AlertTriangle className="text-red-500 mt-1" size={20} /><div><h4 className="font-bold text-red-800">Você tem certeza?</h4><p className="text-sm text-red-600">O horário será liberado.</p></div></div>
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">Motivo</label>
+                                <select className="w-full p-3 border border-gray-300 rounded-lg outline-none bg-white mb-2" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}>
+                                    <option value="">Selecione...</option><option value="Desistiu">Cliente desistiu</option><option value="No-Show">Não compareceu</option><option value="Imprevisto">Imprevisto</option><option value="Outro">Outro</option>
+                                </select>
+                            </div>
+                            <div className="flex gap-2 pt-2"><Button variant="ghost" onClick={() => setIsCancelModalOpen(false)} className="flex-1">Voltar</Button><button onClick={confirmCancel} className="flex-1 bg-red-600 text-white font-bold py-2 rounded-lg hover:bg-red-700 transition-colors">Confirmar</button></div>
                         </div>
-                        <div className="flex gap-2 pt-2"><Button variant="ghost" onClick={() => setIsCancelModalOpen(false)} className="flex-1">Voltar</Button><button onClick={confirmCancel} className="flex-1 bg-red-600 text-white font-bold py-2 rounded-lg hover:bg-red-700 transition-colors">Confirmar</button></div>
-                    </div>
-                </Modal>
-            )}
+                    </Modal>
+                )
+            }
 
             {/* MODAL CHECKOUT */}
-            {isCheckoutModalOpen && apptToCheckout && (
-                <Modal title="Fechar Conta" onClose={() => setIsCheckoutModalOpen(false)}>
-                    <div className="space-y-6">
-                        <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-                            <div className="flex justify-between items-start mb-2">
-                                <h4 className="font-bold text-green-900">{apptToCheckout.service}</h4>
-                                <div className="flex items-center gap-1 bg-white px-2 rounded border border-green-200">
-                                    <span className="text-green-700 font-bold">R$</span>
-                                    <input type="number" className="w-20 p-1 text-right font-bold text-green-700 outline-none" value={finalServicePrice} onChange={(e) => setFinalServicePrice(e.target.value)} />
-                                    <Edit2 size={12} className="text-green-400" />
+            {
+                isCheckoutModalOpen && apptToCheckout && (
+                    <Modal title="Fechar Conta" onClose={() => setIsCheckoutModalOpen(false)}>
+                        <div className="space-y-6">
+                            <div className="bg-green-50 p-4 rounded-xl border border-green-100">
+                                <div className="flex justify-between items-start mb-2">
+                                    <h4 className="font-bold text-green-900">{apptToCheckout.service}</h4>
+                                    <div className="flex items-center gap-1 bg-white px-2 rounded border border-green-200">
+                                        <span className="text-green-700 font-bold">R$</span>
+                                        <input type="number" className="w-20 p-1 text-right font-bold text-green-700 outline-none" value={finalServicePrice} onChange={(e) => setFinalServicePrice(e.target.value)} />
+                                        <Edit2 size={12} className="text-green-400" />
+                                    </div>
                                 </div>
+                                <p className="text-sm text-green-700 flex items-center gap-1"><UserPlus size={14} /> {apptToCheckout.client}</p>
                             </div>
-                            <p className="text-sm text-green-700 flex items-center gap-1"><UserPlus size={14} /> {apptToCheckout.client}</p>
-                        </div>
-                        <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Adicionar Produtos</label>
-                            <div className="flex gap-2">
-                                <select className="flex-1 p-2 border border-gray-300 rounded-lg text-sm bg-white" value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)}>
-                                    <option value="">Escolha um produto...</option>
-                                    {products.map(p => (
-                                        <option key={p.id} value={p.id}>{p.name} - R$ {parseFloat(p.price).toFixed(2)} ({p.stock} un)</option>
-                                    ))}
-                                </select>
-                                <button onClick={addProductToCheckout} className="bg-azuri-600 text-white p-2 rounded-lg hover:bg-azuri-700" title="Adicionar"><ShoppingCart size={20} /></button>
-                            </div>
-                            {checkoutItems.length > 0 && (
-                                <div className="mt-3 space-y-2 bg-gray-50 p-3 rounded-lg">
-                                    {checkoutItems.map((item, idx) => (
-                                        <div key={idx} className="flex justify-between items-center text-sm">
-                                            <span className="flex items-center gap-2 text-gray-700"><ShoppingBag size={14} className="text-gray-400" /> {item.name}</span>
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex items-center bg-white border border-gray-300 rounded-lg overflow-hidden h-8">
-                                                    <button onClick={() => updateQuantity(idx, -1)} className="px-2 h-full hover:bg-gray-100 text-gray-600 border-r border-gray-200"><Minus size={12} /></button>
-                                                    <span className="px-2 text-xs font-bold text-gray-700 min-w-[20px] text-center">{item.quantity}</span>
-                                                    <button onClick={() => updateQuantity(idx, 1)} className="px-2 h-full hover:bg-gray-100 text-gray-600 border-l border-gray-200"><Plus size={12} /></button>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Adicionar Produtos</label>
+                                <div className="flex gap-2">
+                                    <select className="flex-1 p-2 border border-gray-300 rounded-lg text-sm bg-white" value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)}>
+                                        <option value="">Escolha um produto...</option>
+                                        {products.map(p => (
+                                            <option key={p.id} value={p.id}>{p.name} - R$ {parseFloat(p.price).toFixed(2)} ({p.stock} un)</option>
+                                        ))}
+                                    </select>
+                                    <button onClick={addProductToCheckout} className="bg-azuri-600 text-white p-2 rounded-lg hover:bg-azuri-700" title="Adicionar"><ShoppingCart size={20} /></button>
+                                </div>
+                                {checkoutItems.length > 0 && (
+                                    <div className="mt-3 space-y-2 bg-gray-50 p-3 rounded-lg">
+                                        {checkoutItems.map((item, idx) => (
+                                            <div key={idx} className="flex justify-between items-center text-sm">
+                                                <span className="flex items-center gap-2 text-gray-700"><ShoppingBag size={14} className="text-gray-400" /> {item.name}</span>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex items-center bg-white border border-gray-300 rounded-lg overflow-hidden h-8">
+                                                        <button onClick={() => updateQuantity(idx, -1)} className="px-2 h-full hover:bg-gray-100 text-gray-600 border-r border-gray-200"><Minus size={12} /></button>
+                                                        <span className="px-2 text-xs font-bold text-gray-700 min-w-[20px] text-center">{item.quantity}</span>
+                                                        <button onClick={() => updateQuantity(idx, 1)} className="px-2 h-full hover:bg-gray-100 text-gray-600 border-l border-gray-200"><Plus size={12} /></button>
+                                                    </div>
+                                                    <span className="font-bold text-gray-700 min-w-[60px] text-right">R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</span>
                                                 </div>
-                                                <span className="font-bold text-gray-700 min-w-[60px] text-right">R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</span>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="border-t border-gray-200 pt-4 flex justify-between items-center">
+                                <span className="text-gray-500 font-medium">Total a Receber</span>
+                                <span className="text-3xl font-bold text-azuri-700">
+                                    R$ {(parseFloat(finalServicePrice || 0) + checkoutItems.reduce((acc, i) => acc + (parseFloat(i.price) * i.quantity), 0)).toFixed(2)}
+                                </span>
+                            </div>
+                            <Button className="w-full py-4 text-lg bg-green-600 hover:bg-green-700 shadow-lg shadow-green-200" onClick={confirmCheckout} disabled={saving}>
+                                {saving ? 'Finalizando...' : 'Confirmar Pagamento ($)'}
+                            </Button>
                         </div>
-                        <div className="border-t border-gray-200 pt-4 flex justify-between items-center">
-                            <span className="text-gray-500 font-medium">Total a Receber</span>
-                            <span className="text-3xl font-bold text-azuri-700">
-                                R$ {(parseFloat(finalServicePrice || 0) + checkoutItems.reduce((acc, i) => acc + (parseFloat(i.price) * i.quantity), 0)).toFixed(2)}
-                            </span>
-                        </div>
-                        <Button className="w-full py-4 text-lg bg-green-600 hover:bg-green-700 shadow-lg shadow-green-200" onClick={confirmCheckout} disabled={saving}>
-                            {saving ? 'Finalizando...' : 'Confirmar Pagamento ($)'}
-                        </Button>
-                    </div>
-                </Modal>
-            )}
-        </div>
+                    </Modal>
+                )
+            }
+            <Toast message={toast.message} type={toast.type} visible={toast.visible} onClose={() => setToast({ ...toast, visible: false })} />
+        </div >
     );
 };

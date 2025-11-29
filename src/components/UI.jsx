@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, AlertCircle, ArrowRight } from 'lucide-react'; // 👇 Adicionei ArrowRight
+import { X, AlertCircle, ArrowRight } from 'lucide-react';
 
 export const Button = ({ children, onClick, variant = 'primary', className = '', icon: Icon, type = "button", disabled = false }) => {
   const baseStyle = "px-4 py-2 rounded-lg font-medium flex items-center justify-center gap-2 transition-all active:scale-95 text-sm disabled:opacity-50 disabled:cursor-not-allowed";
@@ -26,22 +26,15 @@ export const Card = ({ children, className = '' }) => (
 );
 
 export const Input = ({ label, error, onChange, rightElement, ...props }) => {
-  const handleChange = (e) => {
-    if (props.type !== 'password' && e.target.value && e.target.value.length > 0) {
-      e.target.value = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1);
-    }
-    onChange && onChange(e);
-  };
-
   return (
     <div className="flex flex-col gap-1 mb-3">
       {label && <label className="text-xs font-semibold text-gray-500 uppercase">{label}</label>}
       <div className="relative">
         <input
           className={`w-full p-3 rounded-lg border focus:ring-2 outline-none transition-all text-sm disabled:bg-gray-50 disabled:text-gray-500 ${error ? 'border-red-300 focus:border-red-500 focus:ring-red-100' : 'border-gray-200 focus:border-azuri-500 focus:ring-azuri-100'} ${rightElement ? 'pr-10' : ''}`}
-          onChange={handleChange}
-          autoCapitalize={props.type === 'password' ? 'none' : 'sentences'}
-          spellCheck={props.type !== 'password'}
+          onChange={onChange}
+          autoCapitalize={props.type === 'email' || props.type === 'password' ? 'none' : 'sentences'}
+          spellCheck={props.type !== 'password' && props.type !== 'email'}
           {...props}
         />
         {rightElement && (
@@ -80,7 +73,6 @@ export const Modal = ({ title, onClose, children }) => (
   </div>
 );
 
-// 👇 TABELA COM SCROLL LATERAL E DICA VISUAL
 export const DataTable = ({ columns, data, onDelete, onRowClick }) => (
   <div className="flex flex-col">
     {/* Dica Visual (aparece só em telas pequenas 'md:hidden') */}
@@ -92,7 +84,7 @@ export const DataTable = ({ columns, data, onDelete, onRowClick }) => (
 
     {/* Container com Scroll Horizontal (overflow-x-auto) */}
     <div className="overflow-x-auto rounded-lg border border-gray-100 shadow-sm">
-      <table className="w-full text-left border-collapse whitespace-nowrap"> {/* whitespace-nowrap impede quebra de linha feia */}
+      <table className="w-full text-left border-collapse whitespace-nowrap">
         <thead>
           <tr className="border-b border-gray-100 bg-gray-50">
             {columns.map((col, i) => (

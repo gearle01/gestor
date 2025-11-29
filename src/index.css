@@ -10,6 +10,7 @@ html, body, button, input, textarea, select {
 /* Garante que o app ocupe a altura total */
 html, body {
   height: 100%;
+  margin: 0;
   overflow: hidden; /* Evita rolagem dupla */
   -webkit-overflow-scrolling: touch;
 }
@@ -18,7 +19,6 @@ html, body {
   height: 100dvh;
   width: 100%;
   overflow: hidden;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 @media print {

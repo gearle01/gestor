@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 // 👇 Adicione estes imports do Router
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { BarChart3, Calendar, DollarSign, Users, Scissors, Package, Briefcase, FileText, Settings, LogOut, Menu, Search, HelpCircle, CreditCard } from 'lucide-react';
+import { BarChart3, Calendar, DollarSign, Users, Scissors, Package, Briefcase, FileText, Settings, LogOut, Menu, Search, HelpCircle, CreditCard, AlertCircle } from 'lucide-react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, addDoc, query, onSnapshot, deleteDoc, doc, setDoc, orderBy } from 'firebase/firestore';
 import { auth, db, appId } from './firebase.js';
@@ -169,17 +169,62 @@ function AdminPanel() {
   );
 }
 
+// Componente de Tratamento de Erros (Para evitar tela branca)
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Erro na aplicação:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+          <div className="bg-white p-8 rounded-xl shadow-xl max-w-lg w-full border border-red-100">
+            <div className="text-red-500 mb-4 flex justify-center">
+              <AlertCircle size={48} />
+            </div>
+            <h1 className="text-xl font-bold text-gray-800 text-center mb-2">Ops! Algo deu errado.</h1>
+            <p className="text-gray-500 text-center text-sm mb-6">Não foi possível carregar esta página. Detalhes do erro abaixo:</p>
+            <div className="bg-gray-100 p-4 rounded-lg overflow-auto max-h-48 text-xs font-mono text-red-600 mb-4">
+              {this.state.error?.toString()}
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full bg-azuri-600 text-white font-bold py-3 rounded-lg hover:bg-azuri-700 transition-colors"
+            >
+              Tentar Novamente
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 // 👇 CONFIGURAÇÃO DO ROTEADOR (ISSO É NOVO)
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Rota para o Agendamento Público */}
-        <Route path="/agendar/:uid" element={<PublicBooking />} />
+      <ErrorBoundary>
+        <Routes>
+          {/* Rota para o Agendamento Público */}
+          <Route path="/agendar/:uid" element={<PublicBooking />} />
 
-        {/* Rota Principal (Painel Admin) */}
-        <Route path="/*" element={<AdminPanel />} />
-      </Routes>
+          {/* Rota Principal (Painel Admin) */}
+          <Route path="/*" element={<AdminPanel />} />
+        </Routes>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

@@ -2,39 +2,59 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { collection, query, where, getDocs, addDoc, doc, getDoc, orderBy } from 'firebase/firestore';
 import { db, appId } from '../firebase';
-import { Calendar, User, CheckCircle, Scissors, ChevronLeft, AlertCircle, Clock, MapPin, Phone } from 'lucide-react';
-
-const StepTitle = ({ children }) => <h2 className="text-xl font-bold text-gray-800 mb-2">{children}</h2>;
+import {
+    Calendar, User, CheckCircle, Scissors, ChevronLeft,
+    AlertCircle, Clock, Phone, Sun, Moon, Sunset, Store
+} from 'lucide-react';
 
 export default function PublicBooking() {
     const { uid } = useParams();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
 
     const [businessProfile, setBusinessProfile] = useState(null);
     const [services, setServices] = useState([]);
     const [selectedService, setSelectedService] = useState(null);
+
     const [clientData, setClientData] = useState({ name: '', phone: '' });
-    const [selectedDate, setSelectedDate] = useState('');
+
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedTime, setSelectedTime] = useState('');
+    const [nextDays, setNextDays] = useState([]);
 
     const [isBlockedUser, setIsBlockedUser] = useState(false);
     const [takenSlots, setTakenSlots] = useState([]);
 
-    // 1. Carregar Perfil e Serviços
+    // 1. Inicialização
     useEffect(() => {
+        if (!uid) { setError("Link inválido."); setLoading(false); return; }
+
         const fetchData = async () => {
             try {
                 const userDoc = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'settings', 'profile'));
                 if (userDoc.exists()) {
                     setBusinessProfile(userDoc.data());
+                } else {
+                    setError("Estabelecimento não encontrado.");
                 }
 
                 const q = query(collection(db, 'artifacts', appId, 'users', uid, 'services'), orderBy('name'));
                 const snap = await getDocs(q);
                 setServices(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+                const days = [];
+                const today = new Date();
+                for (let i = 0; i < 14; i++) {
+                    const d = new Date(today);
+                    d.setDate(today.getDate() + i);
+                    days.push(d);
+                }
+                setNextDays(days);
+
             } catch (error) {
-                console.error("Erro ao carregar:", error);
+                console.error(error);
+                setError("Erro ao carregar agenda.");
             } finally {
                 setLoading(false);
             }
@@ -42,307 +62,236 @@ export default function PublicBooking() {
         fetchData();
     }, [uid]);
 
-    // 2. Disponibilidade (ATUALIZADO)
+    // 2. Monitorar Disponibilidade
     useEffect(() => {
         if (!selectedDate || !uid) return;
+        setLoading(true);
         const fetchAvailability = async () => {
-            const q = query(
-                collection(db, 'artifacts', appId, 'users', uid, 'appointments'),
-                where('date', '==', selectedDate)
-            );
-            const snap = await getDocs(q);
-
-            // 👇 FILTRO DE SEGURANÇA:
-            // Só considera ocupado se o status NÃO for 'cancelled'
-            const busyTimes = snap.docs
-                .map(d => d.data())
-                .filter(appt => appt.status !== 'cancelled') // <--- AQUI
-                .map(appt => appt.time);
-
-            setTakenSlots(busyTimes);
+            try {
+                const q = query(
+                    collection(db, 'artifacts', appId, 'users', uid, 'appointments'),
+                    where('date', '==', selectedDate)
+                );
+                const snap = await getDocs(q);
+                const busyTimes = snap.docs
+                    .map(d => d.data())
+                    .filter(appt => appt.status !== 'cancelled')
+                    .map(appt => appt.time);
+                setTakenSlots(busyTimes);
+            } catch (err) { console.error(err); } finally { setLoading(false); }
         };
         fetchAvailability();
     }, [selectedDate, uid]);
 
-    // 3. Identificação (COM VALIDAÇÃO) 🔒
     const handleIdentifyClient = async (e) => {
         e.preventDefault();
-
-        // 👇 VALIDAÇÃO 1: NOME (Mínimo 3 letras)
-        if (!clientData.name || clientData.name.trim().length < 3) {
-            alert('Por favor, digite seu nome completo (mínimo 3 letras).');
-            return;
-        }
-
-        // 👇 VALIDAÇÃO 2: TELEFONE (Mínimo 9 números)
-        // Remove tudo que não é número para contar os dígitos reais
-        const cleanPhone = clientData.phone.replace(/\D/g, '');
-        if (cleanPhone.length < 9) {
-            alert('Por favor, digite um WhatsApp válido com DDD (mínimo 9 números).');
-            return;
-        }
+        if (!clientData.name || clientData.name.length < 3) return alert('Nome muito curto.');
+        if (clientData.phone.length < 8) return alert('Telefone inválido.');
 
         setLoading(true);
         try {
-            const q = query(
-                collection(db, 'artifacts', appId, 'users', uid, 'clients'),
-                where('phone', '==', clientData.phone),
-                where('isBlocked', '==', true)
-            );
-
+            const q = query(collection(db, 'artifacts', appId, 'users', uid, 'clients'), where('phone', '==', clientData.phone), where('isBlocked', '==', true));
             const snap = await getDocs(q);
             setIsBlockedUser(!snap.empty);
             setStep(3);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
-        }
+        } catch (error) { console.error(error); } finally { setLoading(false); }
     };
 
-    // 4. Finalizar
     const handleFinish = async () => {
         if (!selectedDate || !selectedTime) return;
-        if (isBlockedUser) {
-            alert("Não foi possível completar o agendamento. Tente novamente mais tarde.");
-            return;
-        }
-
+        if (isBlockedUser) return alert("Erro ao processar.");
         setLoading(true);
         try {
             await addDoc(collection(db, 'artifacts', appId, 'users', uid, 'appointments'), {
-                client: clientData.name,
-                clientPhone: clientData.phone,
-                service: selectedService.name,
-                servicePrice: selectedService.price,
-                duration: selectedService.duration || '30',
-                date: selectedDate,
-                time: selectedTime,
-                createdAt: new Date().toISOString(),
-                status: 'scheduled',
-                origin: 'online_booking'
+                client: clientData.name, clientPhone: clientData.phone,
+                service: selectedService.name, servicePrice: selectedService.price, duration: selectedService.duration || '30',
+                date: selectedDate, time: selectedTime, createdAt: new Date().toISOString(), status: 'scheduled', origin: 'online_booking'
             });
             setStep(4);
-        } catch (error) {
-            alert("Erro ao agendar.");
-        } finally {
-            setLoading(false);
-        }
+        } catch (error) { alert("Erro ao agendar."); } finally { setLoading(false); }
     };
 
-    const isDayClosed = () => {
-        if (!selectedDate || !businessProfile?.workDays) return false;
-        const dayOfWeek = new Date(selectedDate + 'T00:00:00').getDay();
+    const isDayClosed = (dateString) => {
+        if (!businessProfile?.workDays) return false;
+        const dayOfWeek = new Date(dateString + 'T00:00:00').getDay();
         return businessProfile.workDays[dayOfWeek] === false;
     };
 
-    const generateTimeSlots = () => {
-        if (isBlockedUser) return [];
-        if (!selectedDate || !businessProfile) return [];
-        if (isDayClosed()) return [];
+    const getSlots = () => {
+        if (isBlockedUser || !selectedDate || !businessProfile || isDayClosed(selectedDate)) return { morning: [], afternoon: [], evening: [] };
 
-        const startHour = parseInt(businessProfile.workStart?.split(':')[0] || 9);
-        const endHour = parseInt(businessProfile.workEnd?.split(':')[0] || 19);
+        const start = parseInt(businessProfile.workStart?.split(':')[0] || 9);
+        const end = parseInt(businessProfile.workEnd?.split(':')[0] || 19);
+        const slots = { morning: [], afternoon: [], evening: [] };
 
-        const slots = [];
-        for (let i = startHour; i < endHour; i++) {
-            const hourString = i < 10 ? `0${i}` : `${i}`;
-            const time1 = `${hourString}:00`;
-            if (!takenSlots.includes(time1)) slots.push(time1);
-            const time2 = `${hourString}:30`;
-            if (!takenSlots.includes(time2)) slots.push(time2);
+        for (let i = start; i < end; i++) {
+            const h = i < 10 ? `0${i}` : `${i}`;
+            const timeFull = `${h}:00`;
+            const timeHalf = `${h}:30`;
+
+            if (!takenSlots.includes(timeFull)) {
+                if (i < 12) slots.morning.push(timeFull); else if (i < 18) slots.afternoon.push(timeFull); else slots.evening.push(timeFull);
+            }
+            if (!takenSlots.includes(timeHalf)) {
+                if (i < 12) slots.morning.push(timeHalf); else if (i < 18) slots.afternoon.push(timeHalf); else slots.evening.push(timeHalf);
+            }
         }
         return slots;
     };
 
-    if (loading && step === 1) return <div className="h-screen flex items-center justify-center text-azuri-600 font-bold animate-pulse">Carregando Agenda...</div>;
+    const TimeGroup = ({ title, icon: Icon, slots }) => (
+        slots.length > 0 && (
+            <div className="mb-4 animate-in fade-in slide-in-from-bottom-4">
+                <h4 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1"><Icon size={14} /> {title}</h4>
+                <div className="grid grid-cols-4 gap-2">
+                    {slots.map(t => (
+                        <button key={t} onClick={() => setSelectedTime(t)} className={`py-2 rounded-xl text-sm font-bold border transition-all ${selectedTime === t ? 'bg-azuri-600 text-white border-azuri-600 shadow-lg scale-105' : 'bg-white text-gray-600 border-gray-200 hover:border-azuri-300'}`}>{t}</button>
+                    ))}
+                </div>
+            </div>
+        )
+    );
+
+    if (loading && step === 1) return <div className="h-screen flex items-center justify-center text-azuri-600 font-bold animate-pulse">Carregando...</div>;
+    if (error) return <div className="h-screen flex items-center justify-center text-red-500 p-4 text-center"><AlertCircle size={48} /><p className="font-bold mt-2">{error}</p></div>;
 
     return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden min-h-[600px] flex flex-col relative">
+        <div className="min-h-screen bg-gray-50 flex justify-center font-sans md:py-8">
+            <div className="bg-white w-full max-w-md md:rounded-3xl shadow-2xl overflow-hidden flex flex-col h-screen md:h-[800px] relative">
 
-                {/* Topo */}
-                <div className="bg-azuri-600 p-8 text-white text-center rounded-b-[2.5rem] shadow-lg z-10">
-                    <h1 className="text-2xl font-bold mb-1">{businessProfile?.businessName || 'Agendamento'}</h1>
+                {/* HEADER AZUL (RESTAURADO E MELHORADO) */}
+                <div className="bg-azuri-600 p-6 pt-8 text-white text-center rounded-b-[2.5rem] shadow-lg relative z-20 shrink-0">
+                    {step > 1 && step < 4 && (
+                        <button onClick={() => setStep(step - 1)} className="absolute left-6 top-8 p-2 hover:bg-white/20 rounded-full text-white transition-colors">
+                            <ChevronLeft size={24} />
+                        </button>
+                    )}
+                    <h1 className="text-2xl font-bold mb-1 px-4 truncate">{businessProfile?.businessName || 'Agendamento'}</h1>
                     <p className="text-azuri-100 text-sm flex items-center justify-center gap-1 opacity-90">
-                        <Clock size={14} /> {businessProfile?.workStart || '09:00'} - {businessProfile?.workEnd || '19:00'}
+                        <Clock size={14} /> {businessProfile?.workStart || '09:00'} às {businessProfile?.workEnd || '19:00'}
                     </p>
                 </div>
 
-                <div className="p-6 flex-1 flex flex-col -mt-4 pt-8">
+                <div className="flex-1 overflow-y-auto p-6 scroll-smooth pt-8 -mt-2">
 
                     {/* ETAPA 1: SERVIÇOS */}
                     {step === 1 && (
-                        <div className="animate-in fade-in slide-in-from-right duration-300">
-                            <StepTitle>Selecione o Serviço</StepTitle>
-                            <p className="text-gray-400 text-sm mb-4">O que vamos fazer hoje?</p>
-                            <div className="space-y-3 pb-4">
-                                {services.map(srv => (
-                                    <button
-                                        key={srv.id}
-                                        onClick={() => { setSelectedService(srv); setStep(2); }}
-                                        className="w-full flex justify-between items-center p-4 border border-gray-100 rounded-xl hover:border-azuri-500 hover:shadow-md hover:bg-azuri-50/50 transition-all text-left group bg-white shadow-sm"
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 rounded-full bg-azuri-100 text-azuri-600 flex items-center justify-center group-hover:bg-azuri-600 group-hover:text-white transition-colors">
-                                                <Scissors size={18} />
+                        <div className="animate-in slide-in-from-right duration-300">
+                            <h2 className="text-xl font-bold text-gray-800 mb-1">Qual serviço deseja?</h2>
+                            <p className="text-gray-400 text-sm mb-6">Selecione para continuar.</p>
+
+                            {/* TRATAMENTO DE LISTA VAZIA */}
+                            {services.length === 0 ? (
+                                <div className="text-center py-12 bg-gray-50 rounded-3xl border border-dashed border-gray-200">
+                                    <Store className="mx-auto text-gray-300 mb-2" size={48} />
+                                    <p className="text-gray-500 font-bold">Nenhum serviço disponível</p>
+                                    <p className="text-xs text-gray-400 mt-1 px-4">O estabelecimento ainda não cadastrou serviços para agendamento online.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3 pb-20">
+                                    {services.map(srv => (
+                                        <button
+                                            key={srv.id}
+                                            onClick={() => { setSelectedService(srv); setStep(2); }}
+                                            className="w-full flex justify-between items-center p-4 border border-gray-100 rounded-2xl hover:border-azuri-500 hover:shadow-md transition-all text-left group bg-white active:scale-95 duration-200"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 rounded-xl bg-azuri-50 text-azuri-600 flex items-center justify-center group-hover:bg-azuri-600 group-hover:text-white transition-colors shadow-sm">
+                                                    <Scissors size={20} />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-gray-800 text-lg">{srv.name}</p>
+                                                    <p className="text-xs text-gray-400">{srv.duration || '30'} minutos</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <p className="font-bold text-gray-800">{srv.name}</p>
-                                                <p className="text-xs text-gray-400">{srv.duration || '30'} min • A partir de</p>
-                                            </div>
-                                        </div>
-                                        <span className="font-bold text-azuri-600 text-lg">R$ {parseFloat(srv.price).toFixed(0)}</span>
-                                    </button>
-                                ))}
-                            </div>
+                                            <span className="font-bold text-azuri-600 bg-azuri-50 px-3 py-1 rounded-lg group-hover:bg-azuri-100 transition-colors">
+                                                R$ {parseFloat(srv.price).toFixed(0)}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
 
-                    {/* ETAPA 2: IDENTIFICAÇÃO (VALIDADA) */}
+                    {/* ETAPA 2: IDENTIFICAÇÃO */}
                     {step === 2 && (
-                        <div className="animate-in fade-in slide-in-from-right duration-300">
-                            <button onClick={() => setStep(1)} className="text-gray-400 hover:text-gray-600 mb-4 flex items-center text-sm gap-1"><ChevronLeft size={16} /> Voltar</button>
-                            <StepTitle>Seus Dados</StepTitle>
-                            <p className="text-gray-400 text-sm mb-6">Para confirmarmos seu horário.</p>
-
+                        <div className="animate-in slide-in-from-right duration-300">
+                            <h2 className="text-xl font-bold text-gray-800 mb-1">Seus dados</h2>
+                            <p className="text-gray-400 text-sm mb-6">Para confirmar o horário.</p>
                             <form onSubmit={handleIdentifyClient} className="space-y-5">
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-gray-500 uppercase ml-1">Seu Nome</label>
-                                    <div className="relative">
-                                        <User className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                                        <input
-                                            required
-                                            className="w-full pl-10 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-azuri-500 focus:bg-white transition-all"
-                                            placeholder="Ex: João Silva"
-                                            value={clientData.name}
-                                            onChange={e => setClientData({ ...clientData, name: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-gray-500 uppercase ml-1">WhatsApp</label>
-                                    <div className="relative">
-                                        <Phone className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                                        <input
-                                            required
-                                            type="tel"
-                                            className="w-full pl-10 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-azuri-500 focus:bg-white transition-all"
-                                            placeholder="(00) 00000-0000"
-                                            value={clientData.phone}
-                                            onChange={e => setClientData({ ...clientData, phone: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-                                <button type="submit" className="w-full bg-azuri-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-azuri-700 hover:shadow-xl transition-all active:scale-95 mt-4">
-                                    Verificar Disponibilidade
-                                </button>
+                                <div><label className="text-xs font-bold text-gray-500 uppercase ml-1 mb-1 block">Nome</label><div className="relative"><User className="absolute left-4 top-4 text-gray-400" size={20} /><input required className="w-full pl-12 p-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-azuri-500 focus:bg-white focus:ring-4 focus:ring-azuri-50/50 transition-all text-gray-800 font-medium" placeholder="Seu nome completo" value={clientData.name} onChange={e => setClientData({ ...clientData, name: e.target.value })} /></div></div>
+                                <div><label className="text-xs font-bold text-gray-500 uppercase ml-1 mb-1 block">WhatsApp</label><div className="relative"><Phone className="absolute left-4 top-4 text-gray-400" size={20} /><input required type="tel" className="w-full pl-12 p-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-azuri-500 focus:bg-white focus:ring-4 focus:ring-azuri-50/50 transition-all text-gray-800 font-medium" placeholder="(00) 90000-0000" value={clientData.phone} onChange={e => setClientData({ ...clientData, phone: e.target.value })} /></div></div>
+                                <button type="submit" className="w-full bg-azuri-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-azuri-200 hover:bg-azuri-700 hover:shadow-xl transition-all active:scale-95 mt-4">Verificar Horários</button>
                             </form>
                         </div>
                     )}
 
-                    {/* ETAPA 3: CALENDÁRIO */}
+                    {/* ETAPA 3: DATA E HORÁRIO */}
                     {step === 3 && (
-                        <div className="animate-in fade-in slide-in-from-right duration-300 flex flex-col h-full">
-                            <button onClick={() => setStep(2)} className="text-gray-400 hover:text-gray-600 mb-2 flex items-center text-sm gap-1"><ChevronLeft size={16} /> Voltar</button>
+                        <div className="animate-in slide-in-from-right duration-300 pb-40">
+                            <h2 className="text-xl font-bold text-gray-800 mb-1">Melhor dia e horário</h2>
+                            <p className="text-gray-400 text-sm mb-6">Deslize para ver mais dias.</p>
 
-                            <div className="mb-6">
-                                <StepTitle>Escolha o Dia</StepTitle>
-                                <div className="relative">
-                                    <input
-                                        type="date"
-                                        className="w-full p-4 pl-12 bg-white border-2 border-azuri-100 rounded-2xl outline-none focus:border-azuri-500 text-gray-700 font-bold cursor-pointer shadow-sm hover:border-azuri-300 transition-colors"
-                                        value={selectedDate}
-                                        min={new Date().toISOString().split('T')[0]}
-                                        onChange={e => { setSelectedDate(e.target.value); setSelectedTime(''); }}
-                                    />
-                                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-azuri-500" size={22} />
+                            <div className="mb-8">
+                                <div className="flex gap-3 overflow-x-auto pb-4 snap-x hide-scrollbar px-1">
+                                    {nextDays.map(d => {
+                                        const dString = d.toISOString().split('T')[0];
+                                        const isSelected = selectedDate === dString;
+                                        const isClosed = isDayClosed(dString);
+                                        return (
+                                            <button key={dString} onClick={() => { setSelectedDate(dString); setSelectedTime(''); }} disabled={isClosed} className={`flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 border snap-start transition-all ${isSelected ? 'bg-azuri-600 border-azuri-600 text-white shadow-lg scale-105 ring-2 ring-azuri-200' : isClosed ? 'bg-gray-50 border-gray-100 text-gray-300 opacity-50 cursor-not-allowed' : 'bg-white border-gray-200 text-gray-600 hover:border-azuri-300'}`}>
+                                                <span className="text-xs font-medium uppercase">{d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span><span className="text-xl font-bold">{d.getDate()}</span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
-                            {selectedDate && (
-                                <div className="flex-1 overflow-y-auto pb-20">
-                                    {isDayClosed() ? (
-                                        <div className="text-center py-10 bg-red-50 rounded-2xl border border-red-100 animate-in zoom-in">
-                                            <div className="bg-white p-3 rounded-full inline-block mb-3 shadow-sm"><Clock className="text-red-400" size={24} /></div>
-                                            <p className="text-red-800 font-bold text-lg">Fechado</p>
-                                            <p className="text-sm text-red-600 opacity-80 px-4">Não temos atendimento neste dia.</p>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <h3 className="text-sm font-bold text-gray-600 mb-3 flex items-center gap-2">
-                                                <Clock size={16} /> Horários Livres
-                                            </h3>
-
-                                            <div className="grid grid-cols-4 gap-2">
-                                                {generateTimeSlots().map(time => (
-                                                    <button
-                                                        key={time}
-                                                        onClick={() => setSelectedTime(time)}
-                                                        className={`py-2.5 px-1 rounded-xl text-sm font-bold border transition-all ${selectedTime === time
-                                                            ? 'bg-azuri-600 text-white border-azuri-600 scale-105 shadow-md ring-2 ring-azuri-200'
-                                                            : 'bg-white text-gray-600 border-gray-200 hover:border-azuri-400 hover:text-azuri-600'
-                                                            }`}
-                                                    >
-                                                        {time}
-                                                    </button>
-                                                ))}
-                                            </div>
-
-                                            {generateTimeSlots().length === 0 && !isBlockedUser && (
-                                                <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300 mt-2">
-                                                    <p className="text-gray-500 font-medium">Sem horários para este dia.</p>
-                                                </div>
-                                            )}
-
-                                            {/* MENSAGEM DO SHADOW BAN */}
-                                            {isBlockedUser && (
-                                                <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300 mt-2">
-                                                    <p className="text-gray-500 font-medium">Agenda lotada.</p>
-                                                    <p className="text-xs text-gray-400">Não há horários disponíveis para o seu perfil.</p>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                            )}
-
-                            {selectedDate && selectedTime && (
-                                <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] rounded-b-[2rem] animate-in slide-in-from-bottom-full">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <div className="text-xs text-gray-500">
-                                            <p>{selectedService.name}</p>
-                                            <p>{new Date(selectedDate + 'T00:00:00').toLocaleDateString('pt-BR')} às {selectedTime}</p>
-                                        </div>
-                                        <span className="text-xl font-bold text-azuri-700">R$ {parseFloat(selectedService.price).toFixed(0)}</span>
-                                    </div>
-                                    <button onClick={handleFinish} disabled={loading} className="w-full bg-green-600 text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-green-700 active:scale-95 flex justify-center items-center gap-2 transition-all">
-                                        {loading ? 'Agendando...' : 'Confirmar Agendamento'} <CheckCircle size={20} />
-                                    </button>
-                                </div>
-                            )}
+                            <div>
+                                {loading ? (
+                                    <div className="text-center py-10"><div className="animate-spin w-8 h-8 border-4 border-azuri-600 border-t-transparent rounded-full mx-auto mb-2"></div><p className="text-xs text-gray-400">Verificando horários...</p></div>
+                                ) : (
+                                    <>
+                                        {isDayClosed(selectedDate) ? (
+                                            <div className="text-center py-12 bg-gray-50 rounded-3xl border border-dashed border-gray-200"><Clock className="mx-auto text-gray-300 mb-2" size={32} /><p className="text-gray-500 font-medium">Fechado neste dia</p></div>
+                                        ) : (
+                                            <>
+                                                {getSlots().morning.length === 0 && getSlots().afternoon.length === 0 && getSlots().evening.length === 0 && (
+                                                    <div className="text-center py-12 bg-gray-50 rounded-3xl border border-dashed border-gray-200"><p className="text-gray-500 font-medium">Sem horários disponíveis.</p></div>
+                                                )}
+                                                <TimeGroup title="Manhã" icon={Sun} slots={getSlots().morning} />
+                                                <TimeGroup title="Tarde" icon={Sunset} slots={getSlots().afternoon} />
+                                                <TimeGroup title="Noite" icon={Moon} slots={getSlots().evening} />
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </div>
                         </div>
                     )}
 
                     {/* ETAPA 4: SUCESSO */}
                     {step === 4 && (
-                        <div className="text-center flex flex-col items-center justify-center h-full animate-in zoom-in duration-500">
-                            <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 text-green-600 shadow-sm ring-8 ring-green-50">
-                                <CheckCircle size={48} />
-                            </div>
-                            <h2 className="text-2xl font-bold text-gray-800 mb-2">Agendado!</h2>
-                            <p className="text-gray-500 mb-8 max-w-[200px] leading-relaxed">
-                                Te esperamos dia <strong>{new Date(selectedDate + 'T00:00:00').toLocaleDateString('pt-BR')}</strong> às <strong>{selectedTime}</strong>.
-                            </p>
-                            <div className="space-y-3 w-full">
-                                <button onClick={() => window.location.reload()} className="w-full bg-azuri-50 text-azuri-700 font-bold py-3 rounded-xl hover:bg-azuri-100 transition-colors">
-                                    Agendar Novo
-                                </button>
-                            </div>
+                        <div className="text-center flex flex-col items-center justify-center h-full animate-in zoom-in duration-500 p-4">
+                            <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 text-green-600 shadow-sm ring-8 ring-green-50 animate-bounce-slow"><CheckCircle size={48} /></div>
+                            <h2 className="text-3xl font-bold text-gray-800 mb-2">Tudo certo!</h2>
+                            <p className="text-gray-500 mb-8 max-w-[250px] leading-relaxed mx-auto">Seu agendamento para <strong>{new Date(selectedDate + 'T00:00:00').toLocaleDateString('pt-BR')}</strong> às <strong>{selectedTime}</strong> foi confirmado.</p>
+                            <button onClick={() => window.location.reload()} className="w-full bg-azuri-50 text-azuri-700 font-bold py-4 rounded-2xl hover:bg-azuri-100 transition-colors">Fazer outro agendamento</button>
                         </div>
                     )}
-
                 </div>
+
+                {/* BOTTOM BAR FLUTUANTE */}
+                {step === 3 && selectedDate && selectedTime && (
+                    <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] z-30 animate-in slide-in-from-bottom-full rounded-t-3xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <div><p className="font-bold text-gray-800 text-sm">{selectedService?.name}</p><p className="text-xs text-gray-500">{new Date(selectedDate + 'T00:00:00').toLocaleDateString('pt-BR')} às {selectedTime}</p></div>
+                            <span className="text-xl font-bold text-azuri-600">R$ {parseFloat(selectedService?.price).toFixed(0)}</span>
+                        </div>
+                        <button onClick={handleFinish} disabled={loading} className="w-full bg-green-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-green-200 hover:bg-green-700 active:scale-95 transition-all flex justify-center items-center gap-2">{loading ? 'Confirmando...' : 'Confirmar Agendamento'} <CheckCircle size={20} /></button>
+                    </div>
+                )}
             </div>
         </div>
     );
